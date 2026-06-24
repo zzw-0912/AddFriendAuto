@@ -1,0 +1,35 @@
+:root {
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+  font: 16px/1.5 var(--sans);
+  color-scheme: light dark;
+  color: #213547;
+  background: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #e0e0e0;
+    background: #1a1a2e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1, h2, h3 {
+  color: inherit;
+}
+
+button {
+  font-family: var(--sans);
+}
+
+#root {
+  min-height: 100vh;
+}

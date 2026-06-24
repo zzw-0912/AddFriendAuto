@@ -1,0 +1,8 @@
+node_modules/
+target/
+*.db
+.env
+__pycache__/
+*.pyc
+dist/
+.vite/
