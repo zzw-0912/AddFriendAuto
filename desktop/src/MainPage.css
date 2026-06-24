@@ -1,0 +1,137 @@
+.main-layout {
+  width: 100vw; height: 100vh;
+  display: flex; flex-direction: column;
+  background: #f5f8ff;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+/* Top bar */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 48px; padding: 0 20px;
+  background: #fff;
+  border-bottom: 1px solid #edf2f8;
+  flex-shrink: 0;
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.topbar-logo {
+  width: 22px; height: 22px; background: #344054;
+  border-radius: 6px; display: grid; place-items: center;
+  color: #fff; font-size: 11px; font-weight: 700;
+}
+.topbar-title { font-size: 14px; font-weight: 600; color: #344054; }
+.topbar-status { display: flex; align-items: center; gap: 10px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-email { font-size: 13px; color: #667085; }
+
+.badge {
+  font-size: 12px; font-weight: 500; padding: 4px 10px;
+  border-radius: 999px;
+}
+.badge-vip { background: #fef3c7; color: #92400e; }
+.badge-trial { background: #dbeafe; color: #1e40af; }
+
+.btn-recharge {
+  padding: 6px 14px; font-size: 13px; font-weight: 600;
+  background: #2563eb; color: #fff;
+  border: none; border-radius: 8px; cursor: pointer;
+}
+.btn-recharge:hover { background: #1d4ed8; }
+
+.btn-logout {
+  background: none; border: none; font-size: 13px;
+  color: #667085; cursor: pointer; padding: 0;
+}
+.btn-logout:hover { color: #ef4444; }
+
+/* Main content */
+.main-content {
+  flex: 1; overflow-y: auto;
+  padding: 24px 32px; max-width: 720px; margin: 0 auto;
+  width: 100%;
+}
+
+.status-summary {
+  display: flex; gap: 16px; margin-bottom: 20px;
+}
+.stat-card {
+  flex: 1; background: #fff; border-radius: 12px;
+  padding: 16px; border: 1px solid #edf2f8;
+}
+.stat-label { font-size: 12px; color: #667085; margin-bottom: 4px; }
+.stat-value { font-size: 15px; font-weight: 600; color: #101828; }
+.stat-value.active { color: #16a34a; }
+.stat-value.inactive { color: #667085; }
+
+.stat-bar {
+  margin-top: 8px; height: 6px; background: #edf2f8;
+  border-radius: 3px; overflow: hidden;
+}
+.stat-bar-fill { height: 100%; background: #2563eb; border-radius: 3px; transition: width 0.3s; }
+
+/* Section cards */
+.section-card {
+  background: #fff; border-radius: 12px;
+  padding: 16px 20px; margin-bottom: 12px;
+  border: 1px solid #edf2f8;
+}
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.section-header h3 { margin: 0; font-size: 14px; font-weight: 600; color: #344054; }
+.btn-sm {
+  padding: 5px 12px; font-size: 12px; font-weight: 500;
+  background: #f5f8ff; color: #344054; border: 1px solid #d7e0ef;
+  border-radius: 6px; cursor: pointer;
+}
+.btn-sm:hover { background: #edf2f8; }
+.btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.mono-output {
+  font-size: 12px; background: #f5f8ff; padding: 8px 12px;
+  border-radius: 6px; margin: 0; font-family: monospace;
+  color: #344054;
+}
+.log-box {
+  max-height: 180px; overflow-y: auto;
+  background: #1e1e2e; border-radius: 8px; padding: 10px;
+}
+.log-line {
+  font-size: 11px; color: #d4d4d4; margin: 1px 0;
+  font-family: monospace; white-space: pre-wrap;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: #fff; border-radius: 16px; width: 420px;
+  padding: 28px; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.modal-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: #101828; }
+.modal-close { background: none; border: none; font-size: 24px; color: #667085; cursor: pointer; padding: 0; line-height: 1; }
+
+.plan-list { display: flex; gap: 10px; margin-bottom: 20px; }
+.plan-card {
+  flex: 1; padding: 16px 12px; border: 2px solid #edf2f8;
+  border-radius: 12px; text-align: center; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.plan-card:hover { border-color: #d7e0ef; }
+.plan-card.selected { border-color: #2563eb; background: #f5f8ff; }
+.plan-name { font-size: 14px; font-weight: 600; color: #101828; margin-bottom: 8px; }
+.plan-price { font-size: 22px; font-weight: 700; color: #2563eb; }
+.plan-days { font-size: 12px; color: #667085; margin-top: 4px; }
+
+.msg-success { color: #16a34a; font-size: 13px; margin-top: 12px; text-align: center; }
+.msg-error { color: #ef4444; font-size: 13px; margin-top: 12px; text-align: center; }
+
+.btn-primary {
+  width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
+  background: #2563eb; color: #fff; border: none;
+  border-radius: 10px; cursor: pointer;
+}
+.btn-primary:hover { background: #1d4ed8; }
+.btn-primary:disabled { background: rgba(37,99,235,0.3); cursor: not-allowed; }

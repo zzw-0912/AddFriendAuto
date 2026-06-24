@@ -72,6 +72,20 @@ def login(email: str, code: str, machine_code: str, db: Session) -> dict:
 
     user.last_login_at = datetime.now(timezone.utc)
 
+    # Auto create trial quota for new users
+    if is_new:
+        from app.models.trial_quota import TrialQuota
+        existing_quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).first()
+        if not existing_quota:
+            quota = TrialQuota(
+                user_id=user.id,
+                device_id=0,
+                total_count=20,
+                used_count=0,
+                remaining_count=20,
+            )
+            db.add(quota)
+
     # Check device binding (skip for test account in dev mode)
     is_test_account = settings.debug and email == "test@friendauto.com"
     if not is_test_account:
