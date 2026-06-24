@@ -1,19 +1,17 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def hash_code(code: str) -> str:
-    return pwd_context.hash(code)
+    return hashlib.sha256(code.encode()).hexdigest()
 
 
 def verify_code(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return hash_code(plain) == hashed
 
 
 def create_access_token(data: dict) -> str:
