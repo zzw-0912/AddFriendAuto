@@ -28,28 +28,35 @@ def send_code(email: str, db: Session) -> dict:
     result = {"message": "Code sent", "email": email}
     if settings.debug:
         result["dev_code"] = code
+    if settings.debug and email == "test@friendauto.com":
+        result["dev_code"] = "888888"
     return result
 
 
 def login(email: str, code: str, machine_code: str, db: Session) -> dict:
     # Verify code
-    codes = (
-        db.query(EmailCode)
-        .filter(
-            EmailCode.email == email,
-            EmailCode.used_at.is_(None),
-            EmailCode.expires_at > datetime.now(timezone.utc),
-        )
-        .order_by(EmailCode.created_at.desc())
-        .all()
-    )
-
     valid = False
-    for c in codes:
-        if verify_code(code, c.code_hash):
-            c.used_at = datetime.now(timezone.utc)
-            valid = True
-            break
+
+    # Dev mode: fixed test code for test@friendauto.com
+    if settings.debug and email == "test@friendauto.com" and code == "888888":
+        valid = True
+
+    if not valid:
+        codes = (
+            db.query(EmailCode)
+            .filter(
+                EmailCode.email == email,
+                EmailCode.used_at.is_(None),
+                EmailCode.expires_at > datetime.now(timezone.utc),
+            )
+            .order_by(EmailCode.created_at.desc())
+            .all()
+        )
+        for c in codes:
+            if verify_code(code, c.code_hash):
+                c.used_at = datetime.now(timezone.utc)
+                valid = True
+                break
 
     if not valid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired code")
