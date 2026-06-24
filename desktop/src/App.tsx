@@ -1,67 +1,61 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import LoginPage from "./LoginPage";
+import MainPage from "./MainPage";
 import "./App.css";
 
+const API_BASE = "http://127.0.0.1:8001";
+
+interface StoredAuth {
+  token: string;
+  email: string;
+}
+
 function App() {
-  const [healthStatus, setHealthStatus] = useState<string>("");
-  const [scriptOutput, setScriptOutput] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
+  const [auth, setAuth] = useState<StoredAuth | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [machineCode, setMachineCode] = useState("");
 
-  const checkHealth = async () => {
-    try {
-      const res = await fetch("http://127.0.0.1:8000/health");
-      const data = await res.json();
-      setHealthStatus(JSON.stringify(data));
-    } catch {
-      setHealthStatus("Server unreachable");
-    }
-  };
-
-  const runTestScript = async () => {
-    setIsRunning(true);
-    setScriptOutput([]);
-    try {
-      const result = await invoke<string>("run_python_script", {
-        runId: "tauri_test_001",
-      });
-      const lines = result.split("\n").filter(Boolean);
-      setScriptOutput(lines.map((l) => {
-        try {
-          return JSON.stringify(JSON.parse(l), null, 2);
-        } catch {
-          return l;
+  useEffect(() => {
+    (async () => {
+      try {
+        const mc = await invoke<string>("get_machine_code");
+        setMachineCode(mc);
+      } catch {
+        setMachineCode("unknown");
+      }
+      try {
+        const stored = await invoke<StoredAuth | null>("load_token");
+        if (stored?.token) {
+          setAuth(stored);
         }
-      }));
-    } catch (e: any) {
-      setScriptOutput([`Error: ${e}`]);
-    } finally {
-      setIsRunning(false);
-    }
+      } catch {
+        // no saved token
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleLogin = (token: string, email: string) => {
+    const authData = { token, email };
+    setAuth(authData);
+    invoke("save_token", { token, email });
   };
 
-  return (
-    <div className="container">
-      <h1>FriendAuto</h1>
+  const handleLogout = () => {
+    setAuth(null);
+    invoke("clear_token");
+  };
 
-      <section className="card">
-        <h2>Backend Health Check</h2>
-        <button onClick={checkHealth}>Check Health</button>
-        {healthStatus && <pre className="output">{healthStatus}</pre>}
-      </section>
+  if (loading) {
+    return <div className="container"><p>Loading...</p></div>;
+  }
 
-      <section className="card">
-        <h2>Test Automation Script</h2>
-        <button onClick={runTestScript} disabled={isRunning}>
-          {isRunning ? "Running..." : "Run Test Script"}
-        </button>
-        <div className="log">
-          {scriptOutput.map((line, i) => (
-            <pre key={i}>{line}</pre>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+  if (!auth) {
+    return <LoginPage apiBase={API_BASE} machineCode={machineCode} onLogin={handleLogin} />;
+  }
+
+  return <MainPage apiBase={API_BASE} auth={auth} machineCode={machineCode} onLogout={handleLogout} />;
 }
 
 export default App;
