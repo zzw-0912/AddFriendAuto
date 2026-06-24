@@ -72,31 +72,31 @@ def login(email: str, code: str, machine_code: str, db: Session) -> dict:
 
     user.last_login_at = datetime.now(timezone.utc)
 
-    # Check device binding
-    from app.models.device import Device
-    device = db.query(Device).filter(Device.machine_code_hash == hash_code(machine_code)).first()
+    # Check device binding (skip for test account in dev mode)
+    is_test_account = settings.debug and email == "test@friendauto.com"
+    if not is_test_account:
+        from app.models.device import Device
+        device = db.query(Device).filter(Device.machine_code_hash == hash_code(machine_code)).first()
 
-    if device:
-        if device.user_id != user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Device already bound to another account. Contact admin to unbind.",
+        if device:
+            if device.user_id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Device already bound to another account. Contact admin to unbind.",
+                )
+            device.last_seen_at = datetime.now(timezone.utc)
+        else:
+            existing = db.query(Device).filter(Device.user_id == user.id).first()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Account already bound to another device. Contact admin to unbind.",
+                )
+            device = Device(
+                user_id=user.id,
+                machine_code_hash=hash_code(machine_code),
             )
-        device.last_seen_at = datetime.now(timezone.utc)
-    else:
-        # Check if user already has a device
-        existing = db.query(Device).filter(Device.user_id == user.id).first()
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account already bound to another device. Contact admin to unbind.",
-            )
-        # Auto bind
-        device = Device(
-            user_id=user.id,
-            machine_code_hash=hash_code(machine_code),
-        )
-        db.add(device)
+            db.add(device)
 
     db.commit()
 
