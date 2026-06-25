@@ -4,7 +4,7 @@
 
 ---
 
-## 当前阶段：阶段 3 — 主界面与自动化脚本联调
+## 当前阶段：阶段 4 — 后台管理
 
 ### 状态：已完成
 
@@ -119,15 +119,43 @@
   - 价格从服务端 `/plans` API 获取
   - 试用剩余次数从用户状态获取
 
+### 阶段 4 完成清单
+
+- [x] `POST /admin/login` — 管理员登录（独立 JWT，sub 前缀 `admin_` 区分用户 token）
+- [x] `GET /admin/users` — 用户列表（分页）
+- [x] `GET /admin/users/{id}` — 用户详情（含设备、会员、试用信息）
+- [x] `PATCH /admin/users/{id}/membership` — 会员延长/冻结/解冻
+- [x] `GET /admin/devices` — 设备列表（分页、含用户邮箱）
+- [x] `PATCH /admin/devices/{id}` — 解绑 / 编辑备注 / 状态
+- [x] `POST /admin/devices/{id}/rebind` — 设备改绑到其他用户
+- [x] `GET /admin/plans` + `PATCH /admin/plans/{id}` — 套餐价格在线配置
+- [x] `GET /admin/orders` — 订单列表（支持按状态筛选）
+- [x] `GET /admin/tasks` — 任务日志（含成功/失败/无效统计）
+- [x] `GET /admin/tasks/{id}/results` — 任务执行结果明细
+- [x] `GET /admin/audit-logs` — 操作审计日志（含管理员用户名）
+- [x] `GET /admin/contacts` — 联系人搜索（支持模糊查询）
+- [x] `get_current_admin` — 独立依赖注入函数，用户 token 无法访问 admin
+- [x] `seed.py` — 默认管理员账号 `admin` / `admin123`
+- [x] 操作审计自动记录（create_audit_log 辅助函数）
+- [x] 独立 React 管理前端项目 `admin/`（Vite + React + TypeScript + React Router）
+- [x] 管理前端页面：概览 / 用户管理(详情+会员操作) / 设备管理 / 套餐管理 / 订单管理 / 任务日志 / 操作审计
+
 ### 验证结果
 
 ```
 # 后端集成测试
-POST /tasks/start-check       → {"can_start":true, "task_id":1, ...}
-POST /tasks/1/results         → {"charged":false, "duplicate":false}  (会员有效时不扣次)
-POST /tasks/1/results (重复)  → {"charged":false, "duplicate":true}
-POST /tasks/1/finish          → {"id":1, "status":"finished", ...}
-GET  /contacts/search?q=test  → []
+POST /admin/login             → {"access_token":"...", "admin":{...}} (200)
+GET  /admin/users              → {"items":[...], "total":1} (200)
+GET  /admin/users/1            → {"id":1, "email":"...", "device":{...}} (200)
+PATCH /admin/users/1/membership → {"action":"extend","days":30} → {"success":true} (200)
+PATCH /admin/plans/1           → {"price_cents":2500} → {"price_cents":2500} (200)
+GET  /admin/audit-logs         → {"items":[...], "total":2} (200)
+GET  /admin/users (user token) → 401 "Not an admin token"
+GET  /admin/users (invalid)    → 401 "Invalid token"
+
+# 管理前端
+npx tsc --noEmit → 通过 (0 errors)
+npm run build    → 构建成功 (JS 213KB + CSS 5KB)
 
 # Tauri 编译
 cargo check → 编译成功 (0 warnings)
@@ -136,13 +164,7 @@ cargo check → 编译成功 (0 warnings)
 npx tsc --noEmit → 通过 (0 errors)
 
 # Python 后端模块
-所有 Stage 3 模块导入正常
-
-# 桌面端
-- start_task: stdin JSON → Python 子进程 → stdout 事件流 → 前端日志
-- stop_task: 子进程终止
-- TaskPanel: 配置/日志/计数器全部渲染
-- PaymentModal: 三栏卡片 + 支付方式选择 + 跳过试用
+所有 Stage 4 模块导入正常
 ```
 
 ---
@@ -199,6 +221,11 @@ D:\FriendAuto/
 │   └── friendauto.db           # SQLite 数据库文件
 ├── scripts/
 │   └── test_autobot.py         # 测试自动化脚本（stdin JSON + stdout 逐行事件）
+├── admin/                      # 独立管理后台前端（Vite + React + TypeScript）
+│   ├── src/                    # React 源码（7 个页面 + 路由）
+│   ├── package.json
+│   ├── vite.config.ts          # 开发代理到 :8001
+│   └── index.html
 ├── start_server.bat            # 后端启动脚本
 ├── start_desktop.bat           # 桌面端启动脚本
 ├── PROJECT_PLAN.md             # 项目规划文档
@@ -259,22 +286,19 @@ D:\FriendAuto/
 | 2026-06-25 | `desktop/src/MainPage.css` | 新增任务面板/支付弹窗样式 | |
 | 2026-06-25 | `desktop/src/PaymentModal.tsx` | 全面重设计 | 三栏卡片、支付选择、跳过试用 |
 | 2026-06-25 | `scripts/test_autobot.py` | 重写为 stdin JSON | 多联系人模拟 |
+| 2026-06-25 | `server/app/schemas/admin.py` | **新增**：Admin API 请求/响应 Schema | Stage 4 |
+| 2026-06-25 | `server/app/services/admin_service.py` | **新增**：Admin 业务逻辑（用户/设备/套餐/订单/审计） | Stage 4 |
+| 2026-06-25 | `server/app/api/admin.py` | **新增**：Admin API 路由（14 个端点） | Stage 4 |
+| 2026-06-25 | `server/app/core/deps.py` | 新增 `get_current_admin` 依赖注入 | Admin 独立认证 |
+| 2026-06-25 | `server/app/main.py` | 注册 admin 路由 | |
+| 2026-06-25 | `server/app/seed.py` | 新增默认管理员账号 `admin/admin123` | |
+| 2026-06-25 | `admin/` | **新增**：独立管理后台 React 前端项目 | 7 个管理页面 |
 
 ---
 
 ## 待办事项
 
-### 阶段 4 — 高优先级（后台管理）
-- [ ] 后台管理界面开发（React 独立页面）
-- [ ] 用户管理：列表、详情、状态管理
-- [ ] 设备管理：列表、解绑、改绑、备注
-- [ ] 会员管理：开通、延期、冻结、恢复
-- [ ] 套餐价格配置
-- [ ] 订单列表、支付状态查询
-- [ ] 任务日志、扣次明细查询
-- [ ] 管理员操作审计日志
-
-### 阶段 5 — 中优先级
+### 阶段 5 — 上线前必须完成
 - [ ] 真实微信支付接入（验签、回调）
 - [ ] 真实支付宝支付接入（验签、回调）
 - [ ] 支付幂等处理
@@ -284,8 +308,11 @@ D:\FriendAuto/
 - [ ] HTTPS 服务部署
 - [ ] 接口限流
 - [ ] 客户端日志导出
+- [ ] 网络断开错误提示和状态处理
 - [ ] 代码签名
 - [ ] 用户协议、隐私政策
+- [ ] 异常告警和服务器监控
+- [ ] 安装包在干净 Windows 环境验证
 
 ---
 
@@ -377,7 +404,8 @@ D:\FriendAuto/
 ## Git 提交历史
 
 ```
-xxxxxxxx (HEAD -> master) feat: complete stage 3 — task panel, script integration, payment UI redesign
+xxxxxxxx (HEAD -> master) feat: complete stage 4 — admin panel, backend APIs and React frontend
+95d08e0 feat: complete stage 3 — task panel, script integration, payment UI redesign
 0bd937c docs: rewrite snapshot with comprehensive project status
 cdc9d70 docs: translate snapshot to Chinese
 49ca6ae docs: add project snapshot for session handoff

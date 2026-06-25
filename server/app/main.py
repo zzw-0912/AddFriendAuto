@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.contacts import router as contacts_router
 from app.api.devices import router as devices_router
@@ -40,3 +41,4 @@ app.include_router(orders_router)
 app.include_router(payments_router)
 app.include_router(contacts_router)
 app.include_router(tasks_router)
+app.include_router(admin_router)

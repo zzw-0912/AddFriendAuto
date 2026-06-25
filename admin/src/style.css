@@ -1,0 +1,95 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+
+/* Login */
+.login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.login-card { background: #fff; padding: 40px; border-radius: 12px; width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+.login-card h1 { font-size: 22px; margin-bottom: 24px; text-align: center; color: #333; }
+
+/* Layout */
+.admin-layout { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; background: #1e293b; color: #fff; display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-header { padding: 24px 20px 16px; border-bottom: 1px solid #334155; }
+.sidebar-header h2 { font-size: 18px; margin: 0; }
+.sidebar-subtitle { font-size: 12px; color: #94a3b8; }
+.sidebar-nav { flex: 1; padding: 12px 0; }
+.sidebar-nav button { display: block; width: 100%; padding: 12px 20px; border: none; background: none; color: #cbd5e1; font-size: 14px; text-align: left; cursor: pointer; transition: background 0.2s; }
+.sidebar-nav button:hover { background: #334155; color: #fff; }
+.sidebar-nav button.active { background: #3b82f6; color: #fff; }
+.sidebar-footer { padding: 16px 20px; border-top: 1px solid #334155; }
+.sidebar-footer button { width: 100%; padding: 8px; border: 1px solid #475569; background: none; color: #cbd5e1; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.sidebar-footer button:hover { background: #334155; color: #fff; }
+
+.main-area { flex: 1; padding: 24px; overflow-y: auto; }
+
+/* Form */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; margin-bottom: 4px; color: #666; }
+.form-group input, select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+.form-group input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+.form-error { color: #ef4444; font-size: 13px; margin-bottom: 12px; }
+.form-msg { padding: 8px 12px; background: #d1fae5; color: #065f46; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+
+/* Buttons */
+.btn-primary { width: 100%; padding: 12px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; }
+.btn-primary:hover { background: #2563eb; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-sm { padding: 4px 12px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; margin-right: 4px; }
+.btn-sm:hover { background: #f3f4f6; }
+.btn-danger { color: #ef4444; border-color: #fecaca; }
+.btn-danger:hover { background: #fef2f2; }
+
+/* Page */
+.page { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.page-title { font-size: 18px; margin-bottom: 16px; }
+.page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.page-loading { text-align: center; padding: 40px; color: #666; }
+
+/* Dashboard */
+.dashboard-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.stat-card { background: #fff; border: 1px solid #e5e7eb; border-left: 4px solid; padding: 20px; border-radius: 8px; }
+.stat-value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.stat-label { font-size: 13px; color: #666; }
+
+/* Table */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+.data-table th { background: #f9fafb; font-weight: 600; color: #374151; }
+.data-table tbody tr:hover { background: #f9fafb; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 500; }
+.badge-active { background: #d1fae5; color: #065f46; }
+.badge-inactive { background: #f3f4f6; color: #6b7280; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-vip { background: #fef3c7; color: #92400e; }
+.badge-trial { background: #e0e7ff; color: #3730a3; }
+
+/* Detail */
+.detail-section { margin-bottom: 24px; }
+.detail-section h3 { font-size: 15px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.detail-grid > div { padding: 8px 12px; background: #f9fafb; border-radius: 6px; }
+.detail-grid label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 2px; }
+.detail-actions { margin-top: 12px; display: flex; align-items: center; gap: 8px; }
+.detail-actions input { width: 80px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+
+/* Pagination */
+.pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; font-size: 13px; color: #666; }
+.pagination button { padding: 6px 16px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; }
+.pagination button:hover:not(:disabled) { background: #f3f4f6; }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Filter bar */
+.filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.filter-bar select { width: auto; padding: 6px 12px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: #fff; border-radius: 8px; padding: 24px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.modal-header h3 { margin: 0; }
+
+/* Utilities */
+.mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 12px; }
+code { font-family: monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; font-size: 12px; }

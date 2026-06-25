@@ -187,9 +187,59 @@ FriendAuto 是一款可上线交付客户使用的 Windows 桌面应用。客户
 
 ## 4. 已完成部分
 
-当前已完成的是需求规划和规则确认，代码工程尚未创建。
+### 阶段 0：项目初始化与技术底座 ✅
+- Tauri v2 + React + TypeScript + Vite 桌面工程搭建
+- FastAPI 后端工程 + SQLAlchemy ORM + SQLite 开发数据库
+- 12 张数据表自动创建（users, email_codes, devices, memberships, plans, orders, payments, trial_quotas, tasks, task_results, contacts, admin_users, admin_audit_logs）
+- 三档套餐种子数据（月卡 ¥29.99 / 季卡 ¥69.99 / 年卡 ¥199.99）
+- 测试 Python 脚本 `scripts/test_autobot.py`
+- 健康检查接口 + 桌面端运行脚本命令
+- 一键启动脚本 `start_server.bat` / `start_desktop.bat`
 
-已确认内容：
+### 阶段 1：账号、登录与设备绑定 ✅
+- `POST /auth/send-code` — 邮件验证码发送接口（开发模式回显验证码）
+- `POST /auth/login` — 验证码登录/注册（自动注册 + 自动设备绑定）
+- `POST /auth/refresh` — Token 刷新
+- `POST /devices/bind` — 设备绑定
+- `GET /devices/current` — 当前设备信息
+- 桌面端机器码生成（WMIC csproduct UUID）+ Token 持久化（本地 JSON）
+- 登录 UI：三标签登录页（登录 / 注册 / 找回）
+- 主页面：状态栏、健康检查、脚本运行器
+
+### 阶段 2：会员、试用与充值 ✅
+- `GET /me/status` — 会员 + 试用状态查询
+- `GET /plans` — 套餐列表
+- `POST /orders` — 创建订单 + `GET /orders/{id}` — 查询订单
+- `POST /payments/wechat/callback` — 模拟微信支付回调
+- `POST /payments/alipay/callback` — 模拟支付宝支付回调
+- 新用户自动创建 20 次试用额度 + 会员叠加逻辑
+- 桌面端充值弹窗（三栏套餐卡片 + 支付方式选择）
+- 登录 UI 全面重设计（设计系统复刻）
+
+### 阶段 3：主界面与自动化脚本联调 ✅
+- `POST /tasks/start-check` — 任务前校验（会员/试用/设备状态）
+- `GET /contacts/search` — 联系人筛选接口
+- `POST /tasks/{id}/results` — 结果上报（幂等扣次）
+- `POST /tasks/{id}/finish` — 结束任务
+- 桌面端任务面板 `TaskPanel.tsx`：配置、实时日志、计数器
+- Rust 脚本集成：stdin JSON + BufReader + Tauri 事件流
+- 充值弹窗 `PaymentModal.tsx` 全面重设计
+
+### 阶段 4：后台管理 ✅（后端 API + 前端界面）
+- `POST /admin/login` — 管理员登录（独立 JWT）
+- `GET /admin/users` — 用户列表 + `GET /admin/users/{id}` — 用户详情
+- `PATCH /admin/users/{id}/membership` — 延长/冻结/解冻会员
+- `GET /admin/devices` — 设备列表 + `PATCH /admin/devices/{id}` — 解绑/编辑
+- `POST /admin/devices/{id}/rebind` — 设备改绑
+- `GET /admin/plans` + `PATCH /admin/plans/{id}` — 套餐价格配置
+- `GET /admin/orders` — 订单管理（含状态筛选）
+- `GET /admin/tasks` + `GET /admin/tasks/{id}/results` — 任务日志
+- `GET /admin/audit-logs` — 操作审计
+- `GET /admin/contacts` — 联系人搜索
+- 独立 React 管理前端（用户管理、设备管理、套餐配置、订单管理、任务日志、操作审计）
+- 管理员种子账号：`admin` / `admin123`
+
+已确认的架构和业务规则（保持不变）：
 
 - 项目要做 Windows 桌面端 `.exe`。
 - 红色自动化程序已经由业务方完成，不在本项目中重写。
@@ -206,38 +256,22 @@ FriendAuto 是一款可上线交付客户使用的 Windows 桌面应用。客户
 
 ## 5. 待办事项
 
-### 高优先级
+### 阶段 5 — 高优先级（上线前必须完成）
 
-- 创建 Tauri 桌面端工程。
-- 创建 FastAPI 后端工程。
-- 创建 PostgreSQL 数据库结构和迁移。
-- 实现邮箱验证码登录。
-- 实现机器码生成和设备绑定。
-- 实现会员状态接口。
-- 实现试用次数扣减接口。
-- 实现桌面端充值弹窗。
-- 实现 Python 测试脚本联调。
-
-### 中优先级
-
-- 实现微信支付和支付宝支付。
-- 实现套餐后台配置。
-- 实现订单查询和支付回调。
-- 实现任务日志和扣次记录。
-- 实现用户后台管理。
-- 实现设备改绑。
-- 实现联系人筛选接口。
-- 实现客户端日志导出。
-
-### 低优先级但上线前必须完成
-
-- 自动更新。
-- 客户端代码签名。
-- 接口限流。
-- 管理员操作审计。
-- 用户协议和隐私政策。
-- 异常告警和服务器监控。
-- 安装包在干净 Windows 环境验证。
+- [ ] 真实微信支付接入（验签、回调）
+- [ ] 真实支付宝支付接入（验签、回调）
+- [ ] 支付幂等处理（防止重复回调）
+- [ ] PostgreSQL 生产环境切换
+- [ ] Windows `.exe` 打包
+- [ ] 客户端自动更新
+- [ ] HTTPS 服务部署
+- [ ] 接口限流（验证码、订单、任务）
+- [ ] 客户端日志导出
+- [ ] 网络断开时的错误提示和状态处理
+- [ ] 代码签名（减少 Windows 安全提示）
+- [ ] 用户协议、隐私政策、数据删除机制
+- [ ] 异常告警和服务器监控
+- [ ] 安装包在干净 Windows 环境验证
 
 ## 6. 重要文件修改记录
 
@@ -246,13 +280,10 @@ FriendAuto 是一款可上线交付客户使用的 Windows 桌面应用。客户
 | 日期 | 文件 | 修改内容 | 备注 |
 | --- | --- | --- | --- |
 | 2026-06-24 | `PROJECT_PLAN.md` | 新增项目规划、阶段拆分、关键决策、已完成部分、待办事项和架构思路 | 项目总纲文档 |
+| 2026-06-24 | `desktop/` | 完成 Tauri 工程搭建、登录页 UI、主界面、测试脚本联调 | Stage 0-3 |
+| 2026-06-25 | `server/` | 完成 admin API 路由（8 个端点）、管理后台 React 前端 | Stage 4 后端 + 前端 |
 
-后续建议每次开发完成后都在此处追加记录，例如：
-
-| 日期 | 文件 | 修改内容 | 备注 |
-| --- | --- | --- | --- |
-| YYYY-MM-DD | `desktop/...` | 完成登录页 UI | 待填写 |
-| YYYY-MM-DD | `server/...` | 新增设备绑定接口 | 待填写 |
+后续建议每次开发完成后都在此处追加记录。
 
 ## 7. 架构思路
 
@@ -587,12 +618,15 @@ Python 自动化程序
 
 ## 12. 当前下一步建议
 
-建议下一步从阶段 0 开始：
+当前已完成阶段 0~4，建议下一步从阶段 5 开始：
 
-1. 初始化 Tauri 桌面端工程。
-2. 初始化 FastAPI 后端工程。
-3. 初始化 PostgreSQL 数据库和迁移。
-4. 编写打开记事本输入 `123456` 的 Python 测试脚本。
-5. 完成桌面端调用测试脚本的最小闭环。
-
-完成这一步后，再进入账号登录、设备绑定和会员充值逻辑。
+1. 接入真实微信支付（验签 + 回调处理）
+2. 接入真实支付宝支付（验签 + 回调处理）
+3. 支付幂等处理
+4. PostgreSQL 生产环境切换
+5. Windows `.exe` 打包
+6. 客户端自动更新
+7. HTTPS 服务部署
+8. 接口限流
+9. 客户端日志导出
+10. 代码签名、用户协议、隐私政策

@@ -1,4 +1,7 @@
+import hashlib
+
 from app.core.database import SessionLocal, engine, Base
+from app.models.admin_user import AdminUser
 from app.models.plan import Plan
 
 
@@ -13,6 +16,16 @@ def init_db():
                 Plan(name="年卡", duration_days=365, price_cents=19999, enabled=True),
             ]
             db.add_all(plans)
+            db.commit()
+
+        if not db.query(AdminUser).first():
+            admin = AdminUser(
+                username="admin",
+                password_hash=hashlib.sha256("admin123".encode()).hexdigest(),
+                role="super_admin",
+                status="active",
+            )
+            db.add(admin)
             db.commit()
     finally:
         db.close()

@@ -130,7 +130,16 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 - `a14d772` — 添加 desktop 工程标配文件（.gitignore, README, package-lock.json, assets）
 - `cdc9d70` — 创建并中文化 PROJECT_SNAPSHOT.md
 - `0bd937c` — 重写项目快照文档
-- `xxxxxxxx` —（本次提交）Stage 3 完整实现
+- `95d08e0` — Stage 3 完整实现（TaskPanel, 事件流通信, 充值弹窗重设计）
+
+### 阶段 4：后台管理（当前阶段）
+
+- 后端 admin API 路由：登录、用户、设备、套餐、订单、任务、审计日志
+- 管理员独立 JWT 认证（`get_current_admin` 依赖注入）
+- 内置默认管理员（`admin` / `admin123`）
+- 操作审计日志自动记录
+- 独立 React 管理前端（Vite + React + TypeScript）
+- 页面：概览 / 用户管理 / 设备管理 / 套餐管理 / 订单管理 / 任务日志 / 操作审计
 
 完成内容：
 - `POST /tasks/start-check` — 任务前校验（会员/试用/设备状态）
@@ -151,17 +160,7 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 
 ## 四、待办事项
 
-### 高优先级（Stage 4 — 后台管理）
-- [ ] 后台管理界面开发（React 独立页面或嵌入桌面端）
-- [ ] 用户列表、详情、状态管理
-- [ ] 设备列表、解绑、改绑、备注
-- [ ] 会员开通、延期、冻结
-- [ ] 套餐价格配置
-- [ ] 订单列表、支付状态查询
-- [ ] 任务日志、扣次明细查询
-- [ ] 管理员操作审计日志
-
-### 中优先级（Stage 5 — 上线前必须完成）
+### 阶段 5 — 上线前必须完成
 - [ ] 真实微信支付接入（验签、回调）
 - [ ] 真实支付宝支付接入（验签、回调）
 - [ ] 支付幂等处理（防止重复回调）
@@ -174,6 +173,8 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 - [ ] 网络断开时的错误提示和状态处理
 - [ ] 代码签名
 - [ ] 用户协议、隐私政策
+- [ ] 异常告警和服务器监控
+- [ ] 安装包在干净 Windows 环境验证
 
 ---
 
@@ -248,7 +249,20 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | GET | `/contacts/search` | 搜索联系人 | 3 ✓ |
 | POST | `/tasks/{id}/results` | 上报执行结果（幂等扣次） | 3 ✓ |
 | POST | `/tasks/{id}/finish` | 结束任务 | 3 ✓ |
-| GET/PATCH | `/admin/*` | 后台管理接口 | 4 |
+| POST | `/admin/login` | 管理员登录 | 4 ✓ |
+| GET | `/admin/users` | 用户列表 | 4 ✓ |
+| GET | `/admin/users/{id}` | 用户详情 | 4 ✓ |
+| PATCH | `/admin/users/{id}/membership` | 修改会员（延长/冻结/解冻） | 4 ✓ |
+| GET | `/admin/devices` | 设备列表 | 4 ✓ |
+| PATCH | `/admin/devices/{id}` | 更新设备（状态/备注/解绑） | 4 ✓ |
+| POST | `/admin/devices/{id}/rebind` | 设备改绑 | 4 ✓ |
+| GET | `/admin/plans` | 套餐列表 | 4 ✓ |
+| PATCH | `/admin/plans/{id}` | 更新套餐价格/状态 | 4 ✓ |
+| GET | `/admin/orders` | 订单列表（支持状态筛选） | 4 ✓ |
+| GET | `/admin/tasks` | 任务日志列表 | 4 ✓ |
+| GET | `/admin/tasks/{id}/results` | 任务执行明细 | 4 ✓ |
+| GET | `/admin/audit-logs` | 操作审计日志 | 4 ✓ |
+| GET | `/admin/contacts` | 联系人搜索 | 4 ✓ |
 
 ---
 
@@ -384,33 +398,29 @@ npm run tauri dev
 
 ---
 
-## 十二、下一阶段（Stage 4 — 后台管理）
+## 十二、下一阶段（Stage 5 — 上线打包、安全与稳定性）
 
-### 后端接口
+### 关键任务
 
-- `GET /admin/users` — 用户列表
-- `GET /admin/users/{id}` — 用户详情
-- `PATCH /admin/users/{id}/membership` — 修改会员
-- `GET /admin/devices` — 设备列表
-- `PATCH /admin/devices/{id}` — 解绑/改绑
-- `GET /admin/orders` — 订单列表
-- `GET /admin/tasks` — 任务日志
-- `GET /admin/audit-logs` — 操作审计
-- `POST /admin/login` — 管理员登录
+1. **真实支付接入**：微信支付验签 + 回调 + 支付宝验签 + 回调
+2. **支付幂等处理**：防止支付回调重复处理导致会员多次开通
+3. **PostgreSQL 生产切换**：更新 `database_url` 配置，验证迁移脚本
+4. **Windows `.exe` 打包**：Tauri build 生成安装包
+5. **客户端自动更新**：Tauri updater 配置
+6. **HTTPS 部署**：Nginx + SSL 证书
+7. **接口限流**：防止刷验证码、刷订单、刷任务
+8. **客户端日志导出**：调试/售后用
+9. **网络断开处理**：前端状态提示，阻止启动任务
+10. **代码签名**：减少 Windows Defender 拦截
+11. **用户协议 + 隐私政策**：法律合规
 
-### 后台管理界面
+### 管理功能（已完成）
 
-- 可用 React 独立页面开发
-- 嵌入桌面端或独立浏览器访问
-- 管理员账号认证（JWT + admin_users 表）
-- 操作审计日志自动记录
-
-### 管理功能
-
-- 用户管理：邮箱、注册时间、状态、最近登录
-- 设备管理：机器码、绑定时间、解绑、改绑、备注
-- 会员管理：开通、延期、冻结、恢复、查看到期时间
-- 套餐管理：三档价格配置
-- 订单管理：订单号、用户、套餐、金额、支付方式、状态
-- 任务日志：任务 ID、用户、设备、开始/结束时间、成功/失败/无效统计
-- 扣次记录：每次试用扣次明细
+管理后台已通过独立 React 前端 `admin/` 项目实现，包括：
+- 概览面板：系统数据统计卡片
+- 用户管理：列表、详情、会员操作（延长/冻结/解冻）
+- 设备管理：列表、解绑、改绑
+- 套餐管理：价格在线编辑
+- 订单管理：列表、状态筛选
+- 任务日志：列表、执行结果查看弹窗
+- 操作审计：完整操作记录
