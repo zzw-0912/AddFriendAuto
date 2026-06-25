@@ -98,14 +98,14 @@ function AuthPanel({ tab, onTabChange, apiBase, machineCode, onLogin, showToast 
       <nav className="auth-tabs">
         {(["login", "register", "reset"] as const).map((t) => (
           <button key={t} className={`auth-tab${tab === t ? " active" : ""}`} onClick={() => onTabChange(t)}>
-            {t === "login" ? "登录" : t === "register" ? "注册" : "找回账号"}
+            {t === "login" ? "登录" : t === "register" ? "注册" : "找回密码"}
           </button>
         ))}
       </nav>
 
       {tab === "login" && <LoginForm apiBase={apiBase} machineCode={machineCode} onLogin={onLogin} showToast={showToast} onGotoRegister={() => onTabChange("register")} />}
       {tab === "register" && <RegisterForm apiBase={apiBase} machineCode={machineCode} onLogin={onLogin} showToast={showToast} onGotoLogin={() => onTabChange("login")} />}
-      {tab === "reset" && <ResetForm apiBase={apiBase} machineCode={machineCode} onLogin={onLogin} showToast={showToast} onGotoLogin={() => onTabChange("login")} />}
+      {tab === "reset" && <ResetForm apiBase={apiBase} machineCode={machineCode} showToast={showToast} onGotoLogin={() => onTabChange("login")} />}
     </div>
   );
 }
@@ -155,26 +155,24 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
   onGotoRegister: () => void;
 }) {
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { countdown, send } = useSendCode(apiBase, showToast);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) { showToast("请输入邮箱地址"); return; }
-    if (code.length < 6) { showToast("请输入 6 位验证码"); return; }
+    if (!password) { showToast("请输入密码"); return; }
 
     setLoading(true);
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, machine_code: machineCode }),
+        body: JSON.stringify({ email, password, machine_code: machineCode }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.detail || "登录失败"); return; }
-      if (remember) onLogin(data.access_token, email);
-      else onLogin(data.access_token, email);
+      onLogin(data.access_token, email);
       showToast(remember ? "登录成功，下次将自动登录" : "登录成功");
     } catch {
       showToast("无法连接服务器");
@@ -186,21 +184,16 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
   return (
     <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
       <h2>欢迎回来</h2>
-      <p className="form-sub">输入邮箱获取验证码，即可登录</p>
+      <p className="form-sub">输入邮箱和密码登录</p>
 
       <div className="field">
         <label>邮箱地址</label>
         <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </div>
 
-      <div className="code-row">
-        <div className="field">
-          <label>验证码</label>
-          <input className="input" type="text" placeholder="6 位验证码" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" />
-        </div>
-        <button type="button" className="btn-send" style={{ marginTop: 26 }} disabled={countdown > 0} onClick={() => send(email)}>
-          {countdown > 0 ? `${countdown}s 后重发` : "发送验证码"}
-        </button>
+      <div className="field">
+        <label>密码</label>
+        <input className="input" type="password" placeholder="输入密码" value={password} onChange={(e) => setPassword(e.target.value)} required />
       </div>
 
       <div className="check-row">
@@ -223,6 +216,8 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   onGotoLogin: () => void;
 }) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -231,14 +226,16 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) { showToast("请输入邮箱地址"); return; }
+    if (!password || password.length < 6) { showToast("密码至少 6 位字符"); return; }
+    if (password !== confirm) { showToast("两次输入的密码不一致"); return; }
     if (code.length < 6) { showToast("请输入 6 位验证码"); return; }
     if (!agree) { showToast("请先阅读并同意用户协议和隐私政策"); return; }
 
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/auth/login`, {
+      const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, machine_code: machineCode }),
+        body: JSON.stringify({ email, password, code, machine_code: machineCode }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.detail || "注册失败"); return; }
@@ -254,11 +251,21 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   return (
     <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
       <h2>创建账号</h2>
-      <p className="form-sub">使用邮箱注册，验证后即可开始使用</p>
+      <p className="form-sub">使用邮箱注册，设置密码后即可开始使用</p>
 
       <div className="field">
         <label>邮箱地址</label>
         <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </div>
+
+      <div className="field">
+        <label>设置密码</label>
+        <input className="input" type="password" placeholder="至少 6 位字符" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </div>
+
+      <div className="field">
+        <label>确认密码</label>
+        <input className="input" type="password" placeholder="再次输入密码" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
       </div>
 
       <div className="code-row">
@@ -285,32 +292,35 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   );
 }
 
-function ResetForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }: {
+function ResetForm({ apiBase, machineCode, showToast, onGotoLogin }: {
   apiBase: string; machineCode: string;
-  onLogin: (t: string, e: string) => void;
   showToast: (m: string) => void;
   onGotoLogin: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { countdown, send } = useSendCode(apiBase, showToast);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) { showToast("请输入邮箱地址"); return; }
-    if (code.length < 6) { showToast("请输入 6 位验证码"); return; }
+    if (!code || code.length < 6) { showToast("请输入 6 位验证码"); return; }
+    if (!newPassword || newPassword.length < 6) { showToast("密码至少 6 位字符"); return; }
+    if (newPassword !== confirmPassword) { showToast("两次输入的密码不一致"); return; }
 
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/auth/login`, {
+      const res = await fetch(`${apiBase}/auth/reset-password`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, machine_code: machineCode }),
+        body: JSON.stringify({ email, code, new_password: newPassword }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.detail || "验证失败"); return; }
-      onLogin(data.access_token, email);
-      showToast("验证成功，正在登录");
+      if (!res.ok) { showToast(data.detail || "重置失败"); return; }
+      showToast("密码重置成功，请使用新密码登录");
+      onGotoLogin();
     } catch {
       showToast("无法连接服务器");
     } finally {
@@ -320,8 +330,8 @@ function ResetForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }: {
 
   return (
     <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
-      <h2>找回账号</h2>
-      <p className="form-sub">通过邮箱验证重新获取账号访问权限</p>
+      <h2>找回密码</h2>
+      <p className="form-sub">通过邮箱验证后重置密码</p>
 
       <div className="field">
         <label>注册邮箱</label>
@@ -338,8 +348,18 @@ function ResetForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }: {
         </button>
       </div>
 
+      <div className="field">
+        <label>设置密码</label>
+        <input className="input" type="password" placeholder="至少 6 位字符" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+      </div>
+
+      <div className="field">
+        <label>确认密码</label>
+        <input className="input" type="password" placeholder="再次输入密码" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+      </div>
+
       <button type="submit" className="btn-primary" disabled={loading}>
-        {loading ? <><span className="spinner" /> 验证中…</> : "验证并登录"}
+        {loading ? <><span className="spinner" /> 重置中…</> : "验证并重置密码"}
       </button>
       <p className="form-footer"><a href="#" onClick={(e) => { e.preventDefault(); onGotoLogin(); }}>返回登录</a></p>
     </form>

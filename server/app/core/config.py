@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
+    smtp_from_name: str = "FriendAuto"
     wechat_mch_id: str = ""
     wechat_api_key: str = ""
     alipay_app_id: str = ""

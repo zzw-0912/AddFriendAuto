@@ -1,5 +1,7 @@
 import hashlib
 
+from sqlalchemy import text
+
 from app.core.database import SessionLocal, engine, Base
 from app.models.admin_user import AdminUser
 from app.models.plan import Plan
@@ -7,6 +9,16 @@ from app.models.plan import Plan
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+    # Add password_hash column to existing users table if missing
+    if "sqlite" in str(engine.url):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+                conn.commit()
+        except Exception:
+            pass  # Column already exists
+
     db = SessionLocal()
     try:
         if not db.query(Plan).first():

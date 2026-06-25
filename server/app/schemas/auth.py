@@ -7,8 +7,21 @@ class SendCodeRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
+    password: str = ""
+    machine_code: str
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
     code: str
     machine_code: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
 
 
 class RefreshRequest(BaseModel):

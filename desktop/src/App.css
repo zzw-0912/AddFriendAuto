@@ -11,8 +11,8 @@
   --border-soft: #edf2f8;
   --accent: #2563eb;
   --accent-on: #ffffff;
-  --accent-hover: #1d4ed8;
-  --accent-active: #1e40af;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
   --success: #16a34a;
   --warn: #f59e0b;
   --danger: #ef4444;
@@ -24,7 +24,8 @@
   --text-base: 16px;
   --text-lg: 18px;
   --text-xl: 24px;
-  --text-2xl: 36px;
+      --text-2xl: 36px;
+      --text-3xl: 54px;
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 24px;
@@ -59,7 +60,7 @@ input { font: inherit; outline: 0; }
 
 /* ─── desktop window chrome ───────────────────────────────────────── */
 .app-window {
-  width: 900px; height: 580px;
+      width: 900px; height: 720px;
   background: var(--surface);
   border-radius: var(--radius-md);
   box-shadow: var(--elev-raised), 0 0 0 1px color-mix(in oklab, var(--fg) 6%, transparent);
@@ -110,7 +111,7 @@ input { font: inherit; outline: 0; }
 /* ─── left branding panel ─────────────────────────────────────────── */
 .brand-panel {
   width: 380px; flex-shrink: 0;
-  background: linear-gradient(160deg, #eaf1ff, #eef4ff);
+      background: linear-gradient(160deg, color-mix(in oklab, var(--accent) 6%, var(--surface-warm)), color-mix(in oklab, var(--accent) 14%, var(--bg)));
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   padding: 48px 40px;
@@ -121,7 +122,7 @@ input { font: inherit; outline: 0; }
   content: '';
   position: absolute; top: -80px; right: -80px;
   width: 260px; height: 260px;
-  background: rgba(37, 99, 235, 0.08);
+      background: color-mix(in oklab, var(--accent) 8%, transparent);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -129,7 +130,7 @@ input { font: inherit; outline: 0; }
   content: '';
   position: absolute; bottom: -120px; left: -60px;
   width: 320px; height: 320px;
-  background: rgba(37, 99, 235, 0.04);
+      background: color-mix(in oklab, var(--accent) 4%, transparent);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -140,7 +141,7 @@ input { font: inherit; outline: 0; }
   border-radius: 18px;
   display: grid; place-items: center;
   margin: 0 auto 24px;
-  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.28);
+      box-shadow: 0 12px 32px color-mix(in oklab, var(--accent) 28%, transparent);
 }
 .brand-icon svg { width: 32px; height: 32px; color: var(--accent-on); }
 .brand-name {
@@ -177,7 +178,7 @@ input { font: inherit; outline: 0; }
   flex: 1;
   display: flex; flex-direction: column;
   justify-content: center;
-  padding: 48px 56px;
+  padding: 36px 56px;
   min-width: 0;
 }
 
@@ -205,8 +206,8 @@ input { font: inherit; outline: 0; }
 .auth-tab:hover { color: var(--fg); }
 
 /* ─── form area ───────────────────────────────────────────────────── */
-.auth-form { display: none; flex-direction: column; gap: 20px; }
-.auth-form.visible { display: flex; }
+.auth-form { display: none; flex-direction: column; gap: 16px; }
+.auth-form.visible { display: flex; flex: 1; justify-content: center; }
 .auth-form h2 {
   font-family: var(--font-display);
   font-size: var(--text-xl);
@@ -241,7 +242,7 @@ input { font: inherit; outline: 0; }
   border-color: var(--fg-2);
   box-shadow: var(--focus-ring);
 }
-.input::placeholder { color: rgba(102, 112, 133, 0.4); }
+.input::placeholder { color: color-mix(in oklab, var(--muted) 60%, transparent); }
 
 /* ─── code row ────────────────────────────────────────────────────── */
 .code-row { display: flex; gap: 10px; align-items: flex-end; }
@@ -284,6 +285,10 @@ input { font: inherit; outline: 0; }
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-primary:active { transform: translateY(1px); background: var(--accent-active); }
 .btn-primary:disabled {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+  cursor: not-allowed;
+}
+.btn-primary:disabled {
   background: rgba(37, 99, 235, 0.3);
   cursor: not-allowed;
 }
@@ -313,7 +318,7 @@ input { font: inherit; outline: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
   width: 18px; height: 18px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid color-mix(in oklab, var(--accent-on) 30%, transparent);
   border-top-color: var(--accent-on);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
