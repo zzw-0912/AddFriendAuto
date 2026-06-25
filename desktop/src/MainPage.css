@@ -99,39 +99,307 @@
   font-family: monospace; white-space: pre-wrap;
 }
 
-/* Modal */
+/* ─── Task Panel ──────────────────────────────────── */
+.task-panel {
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.task-config {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.config-row {
+  display: flex; gap: 16px; align-items: flex-end;
+}
+.config-row .field { flex: 1; }
+.config-input { width: 100%; }
+.config-textarea { width: 100%; resize: vertical; }
+.check-field { flex: 0 0 auto; }
+.check-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: #344054;
+  white-space: nowrap;
+}
+.check-label input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: #2563eb; cursor: pointer;
+}
+
+.task-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+.btn-start {
+  padding: 10px 28px; font-size: 14px; font-weight: 600;
+  background: #2563eb; color: #fff; border: none;
+  border-radius: 10px; cursor: pointer;
+}
+.btn-start:hover { background: #1d4ed8; }
+.btn-stop {
+  padding: 10px 28px; font-size: 14px; font-weight: 600;
+  background: #ef4444; color: #fff; border: none;
+  border-radius: 10px; cursor: pointer;
+}
+.btn-stop:hover { background: #dc2626; }
+
+/* Status row */
+.task-status-row {
+  display: flex; gap: 12px; flex-wrap: wrap;
+}
+.ts-item {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 80px;
+}
+.ts-label { font-size: 11px; color: #667085; text-transform: uppercase; letter-spacing: 0.5px; }
+.ts-value { font-size: 14px; font-weight: 600; color: #101828; }
+.ts-value.active { color: #16a34a; }
+.ts-value.inactive { color: #667085; }
+.ts-value.success { color: #16a34a; }
+.ts-value.failed { color: #ef4444; }
+.ts-value.invalid { color: #f59e0b; }
+
+/* Log area */
+.task-log-box {
+  max-height: 280px; min-height: 120px;
+}
+.log-empty {
+  color: #667085; font-size: 13px;
+  text-align: center; padding: 40px 0;
+}
+.log-line.log-normal { color: #d4d4d4; }
+.log-line.log-success { color: #4ade80; }
+.log-line.log-failed { color: #f87171; }
+.log-line.log-invalid { color: #fbbf24; }
+.log-line.log-error { color: #f87171; font-weight: bold; }
+.log-line.log-info { color: #60a5fa; }
+
+/* ─── Payment Modal ──────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
-.modal-content {
-  background: #fff; border-radius: 16px; width: 420px;
-  padding: 28px; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+.pay-modal {
+  position: relative;
+  background: #fff; border-radius: var(--radius-md);
+  width: 680px; max-height: 90vh; overflow-y: auto;
+  padding: 32px 36px;
+  box-shadow: var(--elev-raised), 0 0 0 1px color-mix(in oklab, var(--fg) 6%, transparent);
 }
-.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.modal-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: #101828; }
-.modal-close { background: none; border: none; font-size: 24px; color: #667085; cursor: pointer; padding: 0; line-height: 1; }
-
-.plan-list { display: flex; gap: 10px; margin-bottom: 20px; }
-.plan-card {
-  flex: 1; padding: 16px 12px; border: 2px solid #edf2f8;
-  border-radius: 12px; text-align: center; cursor: pointer;
-  transition: border-color 0.15s;
+.pay-close {
+  position: absolute; top: 16px; right: 18px;
+  background: none; border: none; font-size: 22px;
+  color: var(--muted); cursor: pointer; line-height: 1;
+  padding: 4px 8px; border-radius: 6px;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
-.plan-card:hover { border-color: #d7e0ef; }
-.plan-card.selected { border-color: #2563eb; background: #f5f8ff; }
-.plan-name { font-size: 14px; font-weight: 600; color: #101828; margin-bottom: 8px; }
-.plan-price { font-size: 22px; font-weight: 700; color: #2563eb; }
-.plan-days { font-size: 12px; color: #667085; margin-top: 4px; }
+.pay-close:hover { background: var(--border-soft); color: var(--fg); }
 
-.msg-success { color: #16a34a; font-size: 13px; margin-top: 12px; text-align: center; }
-.msg-error { color: #ef4444; font-size: 13px; margin-top: 12px; text-align: center; }
+/* Toast inside modal */
+.pay-toast {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  padding: 8px 18px; border-radius: var(--radius-sm);
+  font-size: var(--text-sm); font-weight: 500; z-index: 10;
+}
+.pay-toast.success { background: var(--success); color: var(--accent-on); }
+.pay-toast.error { background: var(--danger); color: var(--accent-on); }
 
-.btn-primary {
+/* Header */
+.pay-header { text-align: center; margin-bottom: 24px; }
+.pay-header h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl); font-weight: 700;
+  letter-spacing: -0.015em; margin: 0 0 6px;
+}
+.pay-sub { font-size: var(--text-sm); color: var(--muted); margin: 0; }
+
+.trial-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  background: color-mix(in oklab, var(--warn) 12%, transparent);
+  color: var(--warn);
+  border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 600;
+  margin-bottom: 8px;
+}
+
+/* Plan grid */
+.plan-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 14px; margin-bottom: 24px;
+}
+
+/* Plan cards */
+.pay-modal .plan-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px 18px;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  display: flex; flex-direction: column;
+  transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+.pay-modal .plan-card:hover {
+  border-color: var(--fg-2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--fg) 6%, transparent);
+}
+.pay-modal .plan-card.selected {
+  border-color: var(--fg-2);
+  box-shadow: 0 0 0 1px var(--fg-2), var(--elev-raised);
+}
+.pay-modal .plan-card.featured {
+  border-color: var(--fg-2);
+  background: color-mix(in oklab, var(--fg-2) 2%, var(--surface));
+}
+.plan-badge {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  padding: 3px 14px;
+  background: var(--accent);
+  color: var(--accent-on);
+  border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+}
+.plan-card-name {
+  font-family: var(--font-display);
+  font-size: var(--text-lg); font-weight: 700;
+  margin-bottom: 2px;
+}
+.plan-card-duration {
+  font-size: var(--text-xs); color: var(--muted);
+  margin-bottom: 14px;
+}
+.plan-card-price {
+  font-family: var(--font-display);
+  font-size: 36px; font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--fg); line-height: 1;
+  margin-bottom: 2px;
+}
+.plan-card-price .price-unit {
+  font-size: 16px; font-weight: 500;
+  color: var(--muted);
+}
+.plan-card-monthly {
+  font-size: var(--text-xs); color: var(--muted);
+  margin-bottom: 12px;
+}
+.plan-card-features {
+  list-style: none; padding: 0; margin: 0 0 18px;
+  text-align: left;
+  flex: 1;
+}
+.plan-card-features li {
+  font-size: var(--text-sm); color: var(--fg-2);
+  padding: 4px 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.plan-card-features li::before {
+  content: '';
+  width: 5px; height: 5px;
+  background: var(--success);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.plan-select-btn {
+  width: 100%; padding: 8px 0;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm); font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+  margin-top: auto;
+  transition: all var(--motion-fast) var(--ease-standard);
+}
+.plan-select-btn.selected {
+  background: var(--fg-2); color: var(--accent-on);
+  border-color: var(--fg-2);
+}
+
+/* Payment section */
+.pay-section {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 20px;
+}
+.pay-label {
+  font-size: var(--text-sm); font-weight: 500;
+  color: var(--fg-2); margin-bottom: 10px;
+}
+.pay-options {
+  display: flex; gap: 12px; margin-bottom: 16px;
+}
+.pay-option {
+  flex: 1;
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.pay-option:hover { border-color: var(--fg-2); }
+.pay-option.selected {
+  border-color: var(--fg-2);
+  box-shadow: 0 0 0 1px var(--fg-2);
+}
+.pay-radio {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.pay-option.selected .pay-radio {
+  border-color: var(--fg-2);
+}
+.pay-option.selected .pay-radio::after {
+  content: '';
+  width: 8px; height: 8px;
+  background: var(--fg-2);
+  border-radius: 50%;
+}
+.pay-icon {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+}
+.pay-icon.wechat { background: #07c160; color: #fff; }
+.pay-icon.alipay { background: #1677ff; color: #fff; }
+.pay-name { font-size: var(--text-sm); font-weight: 500; color: var(--fg); }
+
+/* Actions */
+.pay-actions {
+  display: flex; align-items: center; gap: 16px;
+}
+.pay-btn {
+  flex: 1; padding: 11px 24px;
+}
+.pay-btn:disabled {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+  cursor: not-allowed;
+}
+.skip-link {
+  font-size: var(--text-sm); color: var(--muted);
+  white-space: nowrap; text-decoration: none;
+}
+.skip-link strong { color: var(--fg-2); font-weight: 600; }
+.skip-link:hover { text-decoration: underline; }
+
+/* Override .btn-primary within pay-modal */
+.pay-modal .btn-primary {
   width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
-  background: #2563eb; color: #fff; border: none;
-  border-radius: 10px; cursor: pointer;
+  background: var(--accent); color: var(--accent-on); border: none;
+  border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
-.btn-primary:hover { background: #1d4ed8; }
-.btn-primary:disabled { background: rgba(37,99,235,0.3); cursor: not-allowed; }
+.pay-modal .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.pay-modal .btn-primary:disabled {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+  cursor: not-allowed;
+}
+

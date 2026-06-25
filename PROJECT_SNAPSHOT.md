@@ -29,17 +29,25 @@ SQLite (开发) / PostgreSQL (生产)
 
 Windows 桌面端
     │
-    │ 本地进程 (std::process::Command)
+    │ 本地进程 (std::process::Command → stdin/stdout JSON)
     ▼
 Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 ```
+
+### 桌面端 ↔ 脚本通信
+
+- 桌面端通过 `std::process::Command` 启动 Python 子进程
+- **stdin** 传入 JSON 配置（run_id, contacts, daily_limit 等）
+- **stdout** 逐行输出 JSON 事件（started / progress / success / failed / invalid / finished / error）
+- Rust 层用 `BufReader` 逐行读取，**emit Tauri 事件** 到前端
+- 前端 `listen("script-event")` 实时解析并更新日志/计数器
 
 ### 职责划分
 
 | 层 | 职责 | 不负责 |
 |---|---|---|
-| **桌面端** | UI、登录、机器码采集、展示状态、启动脚本、展示日志 | 不判断会员有效/无效、不保存试用次数、不保存支付密钥 |
-| **后端** | 注册登录、验证码校验、token 签发、设备绑定、会员判断、试用扣次、订单创建、支付回调 | — |
+| **桌面端** | UI、登录、机器码采集、展示状态、启动脚本、展示日志、上报结果 | 不判断会员有效/无效、不保存试用次数、不保存支付密钥 |
+| **后端** | 注册登录、验证码校验、token 签发、设备绑定、会员判断、试用扣次、订单创建、支付回调、任务校验、结果记录 | — |
 | **Python 脚本** | 接收参数、执行自动化、返回结果 | 不判断会员、充值、试用 |
 | **后台管理（未开发）** | 用户管理、设备改绑、会员操作、订单查看、任务日志 | — |
 
@@ -54,7 +62,7 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 
 ---
 
-## 三、已完成部分（共 17 次提交）
+## 三、已完成部分（共 19 次提交）
 
 ### 阶段 0：项目初始化与技术底座（7 次提交）
 
@@ -117,37 +125,43 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 - 桌面端：充值弹窗（三档套餐卡片 + 模拟支付回调）
 - Login UI 全面重设计（品牌面板、窗口标题栏、Toast、倒计时、表单验证）
 
-### 文档与配置（2 次提交）
+### 阶段 3：主界面与自动化脚本联调（4 次提交）
 
 - `a14d772` — 添加 desktop 工程标配文件（.gitignore, README, package-lock.json, assets）
 - `cdc9d70` — 创建并中文化 PROJECT_SNAPSHOT.md
+- `0bd937c` — 重写项目快照文档
+- `xxxxxxxx` —（本次提交）Stage 3 完整实现
+
+完成内容：
+- `POST /tasks/start-check` — 任务前校验（会员/试用/设备状态）
+- `GET /contacts/search` — 按微信昵称/微信号模糊搜索联系人
+- `POST /tasks/{id}/results` — 上报单条执行结果（含幂等扣次）
+- `POST /tasks/{id}/finish` — 结束任务并记录完成时间
+- 桌面端任务面板 `TaskPanel.tsx`：每日限额、创建标签、打招呼语、开始/停止
+- 实时日志滚动展示（颜色区分 success/failed/invalid/error）
+- 计数器：成功数、失败数、无效数
+- 状态展示：会员到期时间、剩余试用次数
+- Rust `start_task` 命令：stdin 传 JSON 配置 + BufReader 逐行读 stdout + emit Tauri 事件
+- Rust `stop_task` 命令：kill 子进程（Tauri state + Mutex 管理）
+- 测试脚本 `test_autobot.py` 重写：stdin 读 JSON、模拟 3 个联系人、逐行 JSON stdout
+- 充值弹窗 `PaymentModal.tsx` 全面重设计：三栏套餐卡片、功能列表、支付方式选择（微信/支付宝）、跳过试用链接
+- 仅 `event = success` 且无会员时扣试用次数，`run_id + contact_id` 幂等
 
 ---
 
 ## 四、待办事项
 
-### 高优先级（Stage 3）
-- [ ] `POST /tasks/start-check` — 任务开始前校验（会员/试用/设备/版本）
-- [ ] `GET /contacts/search` — 按微信昵称和微信号筛选联系人
-- [ ] `POST /tasks/{task_id}/results` — 上报单条执行结果（含幂等扣次）
-- [ ] `POST /tasks/{task_id}/finish` — 结束任务
-- [ ] `POST /tasks/{task_id}/logs` — 实时日志上传
-- [ ] 桌面端主任务界面：每日限额、创建标签、打招呼语、开始/停止
-- [ ] 桌面端日志展示（实时输出、成功数、失败数、无效数）
-- [ ] 脚本通信协议对接（JSON stdin/stdout）
-- [ ] 试用扣次逻辑：只有 `event = success` 才扣次，`run_id + contact_id` 幂等
+### 高优先级（Stage 4 — 后台管理）
+- [ ] 后台管理界面开发（React 独立页面或嵌入桌面端）
+- [ ] 用户列表、详情、状态管理
+- [ ] 设备列表、解绑、改绑、备注
+- [ ] 会员开通、延期、冻结
+- [ ] 套餐价格配置
+- [ ] 订单列表、支付状态查询
+- [ ] 任务日志、扣次明细查询
+- [ ] 管理员操作审计日志
 
-### 中优先级（Stage 4）
-- [ ] 后台管理：用户列表、详情、状态管理
-- [ ] 后台管理：设备列表、解绑、改绑、备注
-- [ ] 后台管理：会员开通、延期、冻结
-- [ ] 后台管理：套餐价格配置
-- [ ] 后台管理：订单列表、支付状态
-- [ ] 后台管理：任务日志、扣次明细
-- [ ] 后台管理：管理员操作审计日志
-- [ ] 后台管理界面开发（React 或独立页面）
-
-### 低优先级（Stage 5 — 上线前必须完成）
+### 中优先级（Stage 5 — 上线前必须完成）
 - [ ] 真实微信支付接入（验签、回调）
 - [ ] 真实支付宝支付接入（验签、回调）
 - [ ] 支付幂等处理（防止重复回调）
@@ -186,11 +200,12 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | SQLite 开发 / PostgreSQL 生产 | 环境切换通过 `database_url` 配置 |
 | SHA256 验证码哈希 | passlib 和 bcrypt 5.x 不兼容，改用 hashlib |
 | WMIC csproduct UUID | Windows 机器码采集，不引入额外 Rust crate |
-| 本地 JSON Token 存储 | `dirs_next::data_dir` + `auth.json`，```
-在 `%APPDATA%/FriendAuto/auth.json` |
+| 本地 JSON Token 存储 | `dirs_next::data_dir` + `auth.json`，在 `%APPDATA%/FriendAuto/auth.json` |
 | `std::process::Command` | Rust 原生进程启动，不用 Tauri shell 插件 |
 | 测试账号免绑定 | `test@friendauto.com` + `888888` 跳过设备绑定检查 |
 | 支付回调 mock | 开发环境直接 `POST /payments/*/callback?order_no=...` |
+| Tauri 事件流通信 | Rust BufReader 逐行读 stdout → `app_handle.emit("script-event")` → 前端 `listen()` |
+| 子进程管理 | Tauri State `Mutex<Option<Child>>`，支持 start/stop 和进程清理 |
 
 ---
 
@@ -205,11 +220,11 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | `orders` | id, order_no, user_id, plan_id, amount_cents, payment_channel, status | 订单 |
 | `memberships` | id, user_id, starts_at, ends_at, status | 会员期限 |
 | `trial_quotas` | id, user_id, device_id, total_count, used_count, remaining_count | 试用额度 |
-| `tasks`（预创建） | id, user_id, device_id, daily_limit, create_tag, greeting_text, status | 任务记录 |
-| `task_results`（预创建） | id, task_id, contact_id, result, trial_charged | 任务执行结果 |
-| `contacts`（预创建） | id, wechat_nickname, wechat_id, tag, status | 联系人数据 |
-| `admin_users`（预创建） | id, username, password_hash, role, status | 后台管理员 |
-| `admin_audit_logs`（预创建） | id, admin_user_id, action, target_type, target_id | 操作审计 |
+| `tasks` | id, user_id, device_id, daily_limit, create_tag, greeting_text, status | 任务记录 |
+| `task_results` | id, task_id, contact_id, result, **message**, trial_charged | 任务执行结果 |
+| `contacts` | id, wechat_nickname, wechat_id, tag, status | 联系人数据 |
+| `admin_users` | id, username, password_hash, role, status | 后台管理员 |
+| `admin_audit_logs` | id, admin_user_id, action, target_type, target_id | 操作审计 |
 
 ---
 
@@ -229,10 +244,10 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | GET | `/orders/{id}` | 订单详情 | 2 ✓ |
 | POST | `/payments/wechat/callback` | 微信支付回调（mock） | 2 ✓ |
 | POST | `/payments/alipay/callback` | 支付宝支付回调（mock） | 2 ✓ |
-| POST | `/tasks/start-check` | 任务前校验 | 3 |
-| GET | `/contacts/search` | 搜索联系人 | 3 |
-| POST | `/tasks/{id}/results` | 上报执行结果 | 3 |
-| POST | `/tasks/{id}/finish` | 结束任务 | 3 |
+| POST | `/tasks/start-check` | 任务前校验 | 3 ✓ |
+| GET | `/contacts/search` | 搜索联系人 | 3 ✓ |
+| POST | `/tasks/{id}/results` | 上报执行结果（幂等扣次） | 3 ✓ |
+| POST | `/tasks/{id}/finish` | 结束任务 | 3 ✓ |
 | GET/PATCH | `/admin/*` | 后台管理接口 | 4 |
 
 ---
@@ -241,21 +256,35 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 
 | 日期 | 文件 | 修改内容 |
 |------|------|---------|
-| 2026-06-24 | `PROJECT_PLAN.md` | 新增完整项目规划文档（598 行） |
+| 2026-06-24 | `PROJECT_PLAN.md` | 新增完整项目规划文档 |
 | 2026-06-24 | `PROJECT_MANAGEMENT.md` | 新增阶段 0 管理文档 |
 | 2026-06-24 | `desktop/src-tauri/src/lib.rs` | 实现 Rust 命令：get_machine_code, run_python_script, save_token, load_token, clear_token |
 | 2026-06-24 | `server/app/services/auth_service.py` | 实现 send_code, login（含自动注册、设备绑定、试用额度创建）, refresh |
 | 2026-06-24 | `server/app/core/security.py` | 实现 hash_code（SHA256）、create_access_token（JWT） |
 | 2026-06-24 | `server/app/core/deps.py` | 实现 get_current_user 依赖注入 |
-| 2026-06-24 | `desktop/src/LoginPage.tsx` | 三标签登录 UI（登录/注册/找回账号）|
-| 2026-06-24 | `desktop/src/MainPage.tsx` | 主界面（状态栏、健康检查、脚本运行器）|
-| 2026-06-24 | `desktop/src/PaymentModal.tsx` | 充值弹窗（三档套餐 + 模拟支付回调）|
+| 2026-06-24 | `desktop/src/LoginPage.tsx` | 三标签登录 UI（登录/注册/找回账号） |
+| 2026-06-24 | `desktop/src/MainPage.tsx` | 主界面（状态栏、健康检查、脚本运行器） |
+| 2026-06-24 | `desktop/src/PaymentModal.tsx` | 充值弹窗（三档套餐 + 模拟支付回调） |
 | 2026-06-24 | `server/app/services/payment_service.py` | 支付回调处理 + 会员叠加激活 |
 | 2026-06-24 | `server/app/services/status_service.py` | 查询会员 + 试用状态 |
-| 2026-06-24 | `server/app/services/order_service.py` | 创建订单（UUID 订单号）、查询订单 |
+| 2026-06-24 | `server/app/services/order_service.py` | 创建订单、查询订单 |
 | 2026-06-24 | `server/app/core/config.py` | 配置：database_url, jwt secret, smtp, 支付密钥 |
 | 2026-06-24 | `server/app/seed.py` | 数据库初始化 + 三档套餐种子数据 |
 | 2026-06-25 | `PROJECT_SNAPSHOT.md` | 创建并中文化项目快照 |
+| 2026-06-25 | `server/app/schemas/task.py` | **新增**：StartCheckRequest/Response, ResultRequest 等 Schema |
+| 2026-06-25 | `server/app/schemas/contact.py` | **新增**：ContactResponse Schema |
+| 2026-06-25 | `server/app/services/task_service.py` | **新增**：start_check, report_result, finish_task 业务逻辑 |
+| 2026-06-25 | `server/app/services/contact_service.py` | **新增**：search_contacts 模糊搜索 |
+| 2026-06-25 | `server/app/api/tasks.py` | **新增**：3 个任务路由（start-check, results, finish） |
+| 2026-06-25 | `server/app/api/contacts.py` | **新增**：联系人搜索路由 |
+| 2026-06-25 | `server/app/main.py` | 注册 contacts 和 tasks 路由 |
+| 2026-06-25 | `server/app/models/task_result.py` | 新增 `message` 字段 |
+| 2026-06-25 | `desktop/src/TaskPanel.tsx` | **新增**：任务面板组件（配置、日志、计数器） |
+| 2026-06-25 | `desktop/src-tauri/src/lib.rs` | 重构：`run_python_script` → `start_task`（stdin JSON + 事件流）+ `stop_task`（kill 子进程） |
+| 2026-06-25 | `desktop/src/MainPage.tsx` | 集成 TaskPanel，传递 trialRemaining 到 PaymentModal |
+| 2026-06-25 | `desktop/src/MainPage.css` | 新增任务面板和支付弹窗样式 |
+| 2026-06-25 | `desktop/src/PaymentModal.tsx` | 全面重设计：三栏套餐卡片、功能列表、支付方式选择、跳过试用 |
+| 2026-06-25 | `scripts/test_autobot.py` | 重写：stdin 读 JSON 配置、模拟多联系人处理、逐行 JSON stdout |
 
 ---
 
@@ -284,12 +313,13 @@ npm run tauri dev
 
 - 端口 8001 被占用：`Stop-Process -Id (netstat -ano | findstr ':8001' | Select-Object -First 1) -replace '.*\s+(\d+)$','$1' -Force`
 - 重置数据库：删除 `server/friendauto.db`，重启后端自动重建
+- Python 脚本测试（独立运行）：`echo '{"run_id":"test","contacts":[]}' | python scripts/test_autobot.py`
 
 ---
 
 ## 十、脚本通信协议
 
-### 桌面端 → 脚本
+### 桌面端 → 脚本（stdin JSON）
 
 ```json
 {
@@ -298,18 +328,45 @@ npm run tauri dev
   "create_tag": true,
   "greeting_text": "你好，我是XXX",
   "contacts": [
-    { "contact_id": "contact_001", "wechat_nickname": "张三", "wechat_id": "wxid_001" }
+    { "contact_id": 1001, "wechat_nickname": "张三", "wechat_id": "wxid_zhangsan" }
   ]
 }
 ```
 
-### 脚本 → 桌面端
+### 脚本 → 桌面端（stdout 逐行 JSON）
 
 ```json
-{ "run_id": "task_001", "contact_id": "contact_001", "event": "success", "message": "添加成功", "timestamp": "2026-06-24T12:00:00+08:00" }
+{ "run_id": "task_001", "event": "started", "message": "开始任务，共 3 个联系人", "timestamp": "..." }
+{ "run_id": "task_001", "contact_id": 1001, "event": "progress", "message": "正在处理 张三...", "timestamp": "..." }
+{ "run_id": "task_001", "contact_id": 1001, "event": "success", "message": "张三 添加成功", "timestamp": "..." }
+{ "run_id": "task_001", "event": "finished", "message": "任务完成", "timestamp": "..." }
 ```
 
-事件类型：`started` | `progress` | `success` | `invalid` | `failed` | `finished` | `error`
+### 通信流程
+
+```
+前端 invoke("start_task", {configJson})
+  → Rust spawn python → stdin 写入 JSON
+  → Rust BufReader 逐行读取 stdout
+  → 每行 emit("script-event", json_line)
+  → 前端 listen("script-event") → 解析 → 更新日志/计数器
+  → 每条 success 事件调用 POST /tasks/{id}/results
+  → 用户点击"停止" → invoke("stop_task") → kill 子进程
+  → 脚本退出 → emit {"event":"exited"} → 前端清理状态
+```
+
+### 事件类型
+
+| 事件 | 说明 | 扣次 |
+|------|------|------|
+| `started` | 脚本启动 | 否 |
+| `progress` | 处理中 | 否 |
+| `success` | 添加成功 | 是（无会员时） |
+| `failed` | 添加失败 | 否 |
+| `invalid` | 无效联系人 | 否 |
+| `finished` | 任务完成 | 否 |
+| `error` | 脚本异常 | 否 |
+| `exited` | 进程退出（Rust 发送） | 否 |
 
 扣次规则：只有 `event = success` 才扣试用次数，`run_id + contact_id` 组合幂等。
 
@@ -327,23 +384,33 @@ npm run tauri dev
 
 ---
 
-## 十二、下一阶段（Stage 3）
+## 十二、下一阶段（Stage 4 — 后台管理）
 
-立即需要开发的内容：
+### 后端接口
 
-1. **后端接口**（4 个）：
-   - `POST /tasks/start-check` — 校验会员/试用/设备/版本状态
-   - `GET /contacts/search` — 模糊搜索联系人
-   - `POST /tasks/{task_id}/results` — 上报单条结果（含幂等扣次）
-   - `POST /tasks/{task_id}/finish` — 结束任务
+- `GET /admin/users` — 用户列表
+- `GET /admin/users/{id}` — 用户详情
+- `PATCH /admin/users/{id}/membership` — 修改会员
+- `GET /admin/devices` — 设备列表
+- `PATCH /admin/devices/{id}` — 解绑/改绑
+- `GET /admin/orders` — 订单列表
+- `GET /admin/tasks` — 任务日志
+- `GET /admin/audit-logs` — 操作审计
+- `POST /admin/login` — 管理员登录
 
-2. **桌面端主界面改造**：
-   - 替换当前测试区为真实任务面板
-   - 输入：每日限额、创建标签开关、打招呼语文本框
-   - 操作：开始/停止按钮
-   - 输出：实时日志列表、成功/失败/无效计数器
+### 后台管理界面
 
-3. **脚本集成**：
-   - 实现桌面端 ↔ 脚本的 JSON stdin/stdout 通信
-   - 试用扣次对接（通过服务端接口）
-   - 完成测试脚本联调后替换为真实脚本
+- 可用 React 独立页面开发
+- 嵌入桌面端或独立浏览器访问
+- 管理员账号认证（JWT + admin_users 表）
+- 操作审计日志自动记录
+
+### 管理功能
+
+- 用户管理：邮箱、注册时间、状态、最近登录
+- 设备管理：机器码、绑定时间、解绑、改绑、备注
+- 会员管理：开通、延期、冻结、恢复、查看到期时间
+- 套餐管理：三档价格配置
+- 订单管理：订单号、用户、套餐、金额、支付方式、状态
+- 任务日志：任务 ID、用户、设备、开始/结束时间、成功/失败/无效统计
+- 扣次记录：每次试用扣次明细
