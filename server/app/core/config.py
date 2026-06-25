@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./friendauto.db"
     secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 1440
+    refresh_token_expire_minutes: int = 43200
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
