@@ -73,15 +73,21 @@ function UserDetailPage({ userId, onBack }: Props) {
         </div>
       </div>
 
-      {user.device && (
+      {user.devices && user.devices.length > 0 && (
         <div className="detail-section">
-          <h3>设备信息</h3>
-          <div className="detail-grid">
-            <div><label>设备 ID</label><span>{user.device.id}</span></div>
-            <div><label>机器码</label><span className="mono">{user.device.machine_code_hash.slice(0, 20)}...</span></div>
-            <div><label>状态</label><span className={`badge ${user.device.status === "active" ? "badge-active" : "badge-inactive"}`}>{user.device.status}</span></div>
-            <div><label>绑定时间</label><span>{user.device.bound_at?.slice(0, 19).replace("T", " ") || "-"}</span></div>
-            <div><label>备注</label><span>{user.device.remark || "-"}</span></div>
+          <h3>设备信息 ({user.devices.length} 台)</h3>
+          <div className="detail-list">
+            {user.devices.map((d: any) => (
+              <div key={d.id} className="detail-card">
+                <div className="detail-grid">
+                  <div><label>设备 ID</label><span>{d.id}</span></div>
+                  <div><label>机器码</label><span className="mono">{d.machine_code_hash.slice(0, 20)}...</span></div>
+                  <div><label>状态</label><span className={`badge ${d.status === "active" ? "badge-active" : "badge-inactive"}`}>{d.status}</span></div>
+                  <div><label>绑定时间</label><span>{d.bound_at?.slice(0, 19).replace("T", " ") || "-"}</span></div>
+                  <div><label>备注</label><span>{d.remark || "-"}</span></div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

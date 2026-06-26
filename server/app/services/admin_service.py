@@ -87,14 +87,15 @@ def get_user_detail(user_id: int, db: Session) -> UserDetailResponse:
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    device = db.query(Device).filter(Device.user_id == user_id).first()
-    device_info = None
-    if device:
-        device_info = UserDetailDevice(
-            id=device.id, machine_code_hash=device.machine_code_hash,
-            status=device.status, bound_at=device.bound_at,
-            last_seen_at=device.last_seen_at, remark=device.remark,
+    devices_q = db.query(Device).filter(Device.user_id == user_id).all()
+    device_infos = [
+        UserDetailDevice(
+            id=d.id, machine_code_hash=d.machine_code_hash,
+            status=d.status, bound_at=d.bound_at,
+            last_seen_at=d.last_seen_at, remark=d.remark,
         )
+        for d in devices_q
+    ]
 
     membership_info = None
     active_membership = (
@@ -122,7 +123,7 @@ def get_user_detail(user_id: int, db: Session) -> UserDetailResponse:
     return UserDetailResponse(
         id=user.id, email=user.email, status=user.status,
         created_at=user.created_at, last_login_at=user.last_login_at,
-        device=device_info, membership=membership_info, trial=trial_info,
+        devices=device_infos, membership=membership_info, trial=trial_info,
     )
 
 

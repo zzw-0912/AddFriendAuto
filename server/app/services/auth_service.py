@@ -58,26 +58,24 @@ async def send_code(email: str, db: Session) -> dict:
 def _bind_device(user_id: int, machine_code: str, db: Session):
     from app.models.device import Device
 
-    device = db.query(Device).filter(Device.machine_code_hash == hash_code(machine_code)).first()
-    if device:
-        if device.user_id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Device already bound to another account. Contact admin to unbind.",
-            )
-        device.last_seen_at = datetime.now(timezone.utc)
-    else:
-        existing = db.query(Device).filter(Device.user_id == user_id).first()
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account already bound to another device. Contact admin to unbind.",
-            )
-        device = Device(
-            user_id=user_id,
-            machine_code_hash=hash_code(machine_code),
+    mc_hash = hash_code(machine_code)
+    existing = db.query(Device).filter(
+        Device.user_id == user_id,
+        Device.machine_code_hash == mc_hash,
+    ).first()
+    if existing:
+        existing.last_seen_at = datetime.now(timezone.utc)
+        return
+
+    user_device = db.query(Device).filter(Device.user_id == user_id).first()
+    if user_device:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account already bound to another device. Contact admin to unbind.",
         )
-        db.add(device)
+
+    device = Device(user_id=user_id, machine_code_hash=mc_hash)
+    db.add(device)
 
 
 def _create_trial_quota(user_id: int, db: Session):

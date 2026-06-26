@@ -56,7 +56,7 @@ class UserDetailResponse(BaseModel):
     status: str
     created_at: datetime
     last_login_at: datetime | None = None
-    device: UserDetailDevice | None = None
+    devices: list[UserDetailDevice] = []
     membership: UserDetailMembership | None = None
     trial: UserDetailTrial | None = None
 
