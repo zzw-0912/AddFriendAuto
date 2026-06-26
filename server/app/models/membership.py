@@ -10,6 +10,7 @@ class Membership(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=False, index=True)
+    plan_id = Column(Integer, nullable=True)
     starts_at = Column(DateTime, nullable=False)
     ends_at = Column(DateTime, nullable=False)
     status = Column(String(20), default="active")

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class MembershipInfo(BaseModel):
     is_active: bool = False
+    plan_id: int | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
 

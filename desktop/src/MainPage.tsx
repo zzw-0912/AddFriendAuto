@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PaymentModal from "./PaymentModal";
-import TaskPanel from "./TaskPanel";
+import TaskCard from "./TaskCard";
 import "./MainPage.css";
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
 }
 
 interface UserStatus {
-  membership: { is_active: boolean; ends_at: string | null };
+  membership: { is_active: boolean; plan_id: number | null; ends_at: string | null };
   trial: { total: number; used: number; remaining: number };
 }
 
@@ -44,6 +44,8 @@ function MainPage({ apiBase, auth, onLogout }: Props) {
   }, []);
 
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
+  const planId = status?.membership.plan_id;
+  const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
 
   return (
     <div className="app-window main-layout">
@@ -130,15 +132,18 @@ function MainPage({ apiBase, auth, onLogout }: Props) {
             </div>
           </section>
 
-          {/* Task Panel */}
-          <section className="task-card">
-            <TaskPanel
-              apiBase={apiBase}
-              token={auth.token}
-              status={status}
-              onStatusChange={fetchStatus}
-            />
-          </section>
+          {/* Task Cards */}
+          <div className="task-cards">
+            {Array.from({ length: cardCount }, (_, i) => (
+              <TaskCard
+                key={i}
+                apiBase={apiBase}
+                token={auth.token}
+                status={status}
+                onStatusChange={fetchStatus}
+              />
+            ))}
+          </div>
         </main>
       </div>
 

@@ -59,6 +59,7 @@ def _process_payment(order_no: str, channel: str, db: Session) -> dict:
         ends_at = starts_at + timedelta(days=plan.duration_days)
         membership = Membership(
             user_id=order.user_id,
+            plan_id=order.plan_id,
             starts_at=starts_at,
             ends_at=ends_at,
             status="active",

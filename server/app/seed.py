@@ -10,14 +10,20 @@ from app.models.plan import Plan
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-    # Add password_hash column to existing users table if missing
+    # Add columns to existing tables if missing (SQLite compat)
     if "sqlite" in str(engine.url):
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
                 conn.commit()
         except Exception:
-            pass  # Column already exists
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE memberships ADD COLUMN plan_id INTEGER"))
+                conn.commit()
+        except Exception:
+            pass
 
     db = SessionLocal()
     try:

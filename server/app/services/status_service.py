@@ -23,6 +23,7 @@ def get_user_status(user: User, db: Session) -> UserStatusResponse:
     if active_membership:
         membership_info = MembershipInfo(
             is_active=True,
+            plan_id=active_membership.plan_id,
             starts_at=active_membership.starts_at,
             ends_at=active_membership.ends_at,
         )
