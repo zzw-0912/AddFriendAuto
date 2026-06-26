@@ -15,13 +15,6 @@ interface UserStatus {
   trial: { total: number; used: number; remaining: number };
 }
 
-const NAV_ITEMS = [
-  { label: "首页", icon: "home" },
-  { label: "自动加好友", icon: "addfriend" },
-  { label: "联系人管理", icon: "contacts" },
-  { label: "任务记录", icon: "tasks" },
-];
-
 const BOTTOM_NAV_ITEMS = [
   { label: "客服", icon: "service" },
   { label: "反馈", icon: "feedback" },
@@ -33,7 +26,7 @@ function MainPage({ apiBase, auth, onLogout }: Props) {
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeNav, setActiveNav] = useState("首页");
+  const [activeNav, setActiveNav] = useState("");
 
   const fetchStatus = async () => {
     try {
@@ -63,21 +56,6 @@ function MainPage({ apiBase, auth, onLogout }: Props) {
           </div>
 
           <nav className="sidebar-nav">
-            <div className="nav-group-label">功能</div>
-            {NAV_ITEMS.map((item) => (
-              <a
-                key={item.label}
-                className={`nav-item${activeNav === item.label ? " active" : ""}`}
-                href="#"
-                onClick={(e) => { e.preventDefault(); setActiveNav(item.label); }}
-              >
-                <NavIcon name={item.icon} />
-                <span className="nav-text">{item.label}</span>
-              </a>
-            ))}
-
-            <div className="nav-spacer" />
-
             {BOTTOM_NAV_ITEMS.map((item) => (
               <a
                 key={item.label}
