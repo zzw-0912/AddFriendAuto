@@ -1,325 +1,193 @@
-/* ─── tokens — Contemporary design system ────────────────────────── */
 :root {
-  --bg: #f5f8ff;
-  --surface: #ffffff;
-  --surface-warm: #eaf1ff;
-  --fg: #101828;
-  --fg-2: #344054;
-  --muted: #667085;
-  --meta: #2563eb;
-  --border: #d7e0ef;
-  --border-soft: #edf2f8;
-  --accent: #2563eb;
-  --accent-on: #ffffff;
-      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
-      --accent-active: color-mix(in oklab, var(--accent), black 14%);
-  --success: #16a34a;
-  --warn: #f59e0b;
-  --danger: #ef4444;
-  --font-display: Inter, system-ui, sans-serif;
-  --font-body: Inter, system-ui, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
-  --text-xs: 12px;
-  --text-sm: 14px;
-  --text-base: 16px;
-  --text-lg: 18px;
-  --text-xl: 24px;
-      --text-2xl: 36px;
-      --text-3xl: 54px;
-  --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
-  --radius-pill: 9999px;
-  --elev-raised: 0 20px 52px rgba(16, 24, 40, 0.11);
-  --focus-ring: 0 0 0 4px rgba(37, 99, 235, 0.22);
-  --motion-fast: 150ms;
-  --motion-base: 240ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bg: #edf3ff;
+  --panel: #ffffff;
+  --panel-soft: #f4f8ff;
+  --sidebar-bg: #eaf1ff;
+  --line: #dbe7fb;
+  --line-soft: #e9f0fb;
+  --text: #101828;
+  --text-soft: #4b607f;
+  --text-muted: #7f8daa;
+  --blue: #2f6df6;
+  --blue-deep: #2157dc;
+  --green: #18b35e;
+  --green-bg: #e1f5eb;
+  --orange: #f4a11a;
+  --orange-bg: #fff1de;
+  --shadow: 0 24px 60px rgba(73, 106, 175, 0.14);
+  --radius-xl: 28px;
+  --radius-lg: 22px;
+  --radius-md: 18px;
+  --radius-sm: 14px;
+  --radius-pill: 999px;
+  --sidebar-width: 276px;
+  --sidebar-collapsed: 88px;
+  --window-width: min(1370px, calc(100vw - 56px));
+  --window-height: min(1032px, calc(100vh - 42px));
 }
 
-/* ─── reset & base ────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; height: 100%; }
+html { height: 100%; }
 body {
   margin: 0; height: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font-body);
-  font-size: var(--text-base);
-  line-height: 1.55;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.95), transparent 32%),
+    linear-gradient(180deg, #f5f8ff 0%, #edf3ff 100%);
+  color: var(--text);
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
   display: flex; align-items: center; justify-content: center;
+  padding: 18px;
   user-select: none;
 }
-a { color: var(--fg-2); text-decoration: none; font-weight: 500; }
-a:hover { text-decoration: underline; }
+a { color: inherit; text-decoration: none; }
 button { font: inherit; cursor: pointer; border: 0; outline: 0; }
-p { text-wrap: pretty; margin: 0; }
-input { font: inherit; outline: 0; }
+p { margin: 0; }
+input, textarea { font: inherit; outline: 0; }
+svg { display: block; }
 
-/* ─── desktop window chrome ───────────────────────────────────────── */
+/* ─── app window ────────────────────────────────── */
 .app-window {
-      width: 900px; height: 720px;
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  box-shadow: var(--elev-raised), 0 0 0 1px color-mix(in oklab, var(--fg) 6%, transparent);
-  display: flex; flex-direction: column;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(213, 226, 248, 0.88);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
   overflow: hidden;
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
 }
-.titlebar {
-  display: flex; align-items: center; justify-content: space-between;
-  height: 42px; padding: 0 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border-soft);
-  flex-shrink: 0;
-}
-.titlebar-left {
-  display: flex; align-items: center; gap: 10px;
-}
-.titlebar-logo {
-  width: 20px; height: 20px;
-  background: var(--fg-2);
-  border-radius: 5px;
-  display: grid; place-items: center;
-  color: var(--accent-on);
-  font-size: 11px; font-weight: 700;
-}
-.titlebar-title {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--fg-2);
-}
-.titlebar-controls {
-  display: flex; gap: 2px;
-}
-.win-btn {
-  width: 36px; height: 28px;
-  display: grid; place-items: center;
-  background: transparent;
-  border-radius: 6px;
-  color: var(--muted);
-  transition: background var(--motion-fast) var(--ease-standard);
-}
-.win-btn:hover { background: var(--border-soft); color: var(--fg); }
-.win-btn.close:hover { background: var(--danger); color: var(--accent-on); }
-.win-btn svg { width: 12px; height: 12px; }
 
-/* ─── main content split ──────────────────────────────────────────── */
+/* ─── login page ────────────────────────────────── */
+.app-window.login-layout {
+  width: 900px; height: 720px;
+}
+
 .app-body { display: flex; flex: 1; min-height: 0; }
 
-/* ─── left branding panel ─────────────────────────────────────────── */
+/* ─── login: brand panel ─────────────────────────── */
 .brand-panel {
   width: 380px; flex-shrink: 0;
-      background: linear-gradient(160deg, color-mix(in oklab, var(--accent) 6%, var(--surface-warm)), color-mix(in oklab, var(--accent) 14%, var(--bg)));
+  background: linear-gradient(160deg, rgba(37, 99, 235, 0.06), rgba(37, 99, 235, 0.14));
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   padding: 48px 40px;
-  position: relative;
-  overflow: hidden;
+  position: relative; overflow: hidden;
 }
 .brand-panel::before {
-  content: '';
-  position: absolute; top: -80px; right: -80px;
+  content: ''; position: absolute; top: -80px; right: -80px;
   width: 260px; height: 260px;
-      background: color-mix(in oklab, var(--accent) 8%, transparent);
-  border-radius: 50%;
-  pointer-events: none;
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: 50%; pointer-events: none;
 }
 .brand-panel::after {
-  content: '';
-  position: absolute; bottom: -120px; left: -60px;
+  content: ''; position: absolute; bottom: -120px; left: -60px;
   width: 320px; height: 320px;
-      background: color-mix(in oklab, var(--accent) 4%, transparent);
-  border-radius: 50%;
-  pointer-events: none;
+  background: rgba(37, 99, 235, 0.04);
+  border-radius: 50%; pointer-events: none;
 }
 .brand-content { position: relative; z-index: 1; text-align: center; }
 .brand-icon {
   width: 64px; height: 64px;
-  background: var(--accent);
+  background: var(--blue);
   border-radius: 18px;
   display: grid; place-items: center;
   margin: 0 auto 24px;
-      box-shadow: 0 12px 32px color-mix(in oklab, var(--accent) 28%, transparent);
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.28);
 }
-.brand-icon svg { width: 32px; height: 32px; color: var(--accent-on); }
+.brand-icon svg { width: 32px; height: 32px; color: #fff; }
 .brand-name {
-  font-family: var(--font-display);
   font-size: 28px; font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--fg);
-  margin-bottom: 8px;
+  color: var(--text); margin-bottom: 8px;
 }
 .brand-tagline {
-  font-size: var(--text-sm);
-  color: var(--muted);
-  max-width: 24ch;
-  line-height: 1.6;
+  font-size: 14px; color: var(--text-muted);
+  max-width: 24ch; line-height: 1.6;
 }
-.brand-features {
-  margin-top: 40px;
-  display: flex; flex-direction: column; gap: 14px;
-}
+.brand-features { margin-top: 40px; display: flex; flex-direction: column; gap: 14px; }
 .brand-feat {
   display: flex; align-items: center; gap: 10px;
-  font-size: var(--text-sm);
-  color: var(--fg-2);
+  font-size: 14px; color: var(--text-soft);
 }
 .brand-feat .feat-dot {
   width: 7px; height: 7px;
-  background: var(--muted);
-  border-radius: 50%;
-  flex-shrink: 0;
+  background: var(--text-muted);
+  border-radius: 50%; flex-shrink: 0;
 }
 
-/* ─── right auth panel ────────────────────────────────────────────── */
+/* ─── login: auth panel ──────────────────────────── */
 .auth-panel {
-  flex: 1;
-  display: flex; flex-direction: column;
-  justify-content: center;
-  padding: 36px 56px;
-  min-width: 0;
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: center; padding: 36px 56px; min-width: 0;
 }
-
-/* ─── tab switcher ────────────────────────────────────────────────── */
 .auth-tabs {
-  display: flex; gap: 28px;
-  margin-bottom: 32px;
-  border-bottom: 1px solid var(--border-soft);
-  padding-bottom: 14px;
+  display: flex; gap: 28px; margin-bottom: 32px;
+  border-bottom: 1px solid var(--line-soft); padding-bottom: 14px;
 }
 .auth-tab {
-  font-size: var(--text-base);
-  font-weight: 500;
-  color: var(--muted);
-  background: none;
-  padding: 0 0 8px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -15px;
-  transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+  font-size: 16px; font-weight: 500; color: var(--text-muted);
+  background: none; padding: 0 0 8px;
+  border-bottom: 2px solid transparent; margin-bottom: -15px;
+  transition: color 150ms ease, border-color 150ms ease;
 }
-.auth-tab.active {
-  color: var(--fg);
-  border-bottom-color: var(--fg);
-}
-.auth-tab:hover { color: var(--fg); }
-
-/* ─── form area ───────────────────────────────────────────────────── */
+.auth-tab.active { color: var(--text); border-bottom-color: var(--text); }
+.auth-tab:hover { color: var(--text); }
 .auth-form { display: none; flex-direction: column; gap: 16px; }
 .auth-form.visible { display: flex; flex: 1; justify-content: center; }
-.auth-form h2 {
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  margin: 0 0 4px;
-}
-.auth-form .form-sub {
-  font-size: var(--text-sm);
-  color: var(--muted);
-  margin-bottom: 4px;
-}
+.auth-form h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 4px; }
+.auth-form .form-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 4px; }
 
-/* ─── field ───────────────────────────────────────────────────────── */
+/* ─── field ──────────────────────────────────────── */
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field label {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--fg-2);
-}
+.field label { font-size: 14px; font-weight: 500; color: var(--text-soft); }
 .input {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--fg);
-  font-size: var(--text-base);
-  transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text);
+  font-size: 16px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
-.input:focus {
-  border-color: var(--fg-2);
-  box-shadow: var(--focus-ring);
-}
-.input::placeholder { color: color-mix(in oklab, var(--muted) 60%, transparent); }
+.input:focus { border-color: var(--text-soft); box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.22); }
+.input::placeholder { color: rgba(127, 141, 170, 0.6); }
 
-/* ─── code row ────────────────────────────────────────────────────── */
 .code-row { display: flex; gap: 10px; align-items: flex-end; }
 .code-row .field { flex: 1; }
 .btn-send {
-  flex-shrink: 0;
-  padding: 10px 16px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg-2);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  white-space: nowrap;
-  transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+  flex-shrink: 0; padding: 10px 16px;
+  background: transparent; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); color: var(--text-soft);
+  font-size: 14px; font-weight: 500; white-space: nowrap;
+  transition: background 150ms ease, border-color 150ms ease;
 }
-.btn-send:hover:not(:disabled) {
-  background: rgba(52, 64, 84, 0.06);
-  border-color: var(--fg-2);
-}
-.btn-send:disabled {
-  color: var(--muted);
-  border-color: var(--border-soft);
-  cursor: not-allowed;
-}
+.btn-send:hover:not(:disabled) { background: rgba(52, 64, 84, 0.06); border-color: var(--text-soft); }
+.btn-send:disabled { color: var(--text-muted); border-color: var(--line-soft); cursor: not-allowed; }
 
-/* ─── primary action button ───────────────────────────────────────── */
 .btn-primary {
-  width: 100%;
-  padding: 12px 24px;
-  background: var(--accent);
-  color: var(--accent-on);
-  font-size: var(--text-base);
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  width: 100%; padding: 12px 24px;
+  background: var(--blue); color: #fff;
+  font-size: 16px; font-weight: 600; letter-spacing: -0.005em;
   border-radius: var(--radius-sm);
-  transition: background var(--motion-fast) var(--ease-standard), transform 0.05s ease;
+  transition: background 150ms ease, transform 0.05s ease;
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-primary:active { transform: translateY(1px); background: var(--accent-active); }
-.btn-primary:disabled {
-  background: color-mix(in oklab, var(--accent) 30%, transparent);
-  cursor: not-allowed;
-}
-.btn-primary:disabled {
-  background: rgba(37, 99, 235, 0.3);
-  cursor: not-allowed;
-}
+.btn-primary:hover { background: var(--blue-deep); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { background: rgba(47, 109, 246, 0.3); cursor: not-allowed; }
 
-/* ─── checkbox row ────────────────────────────────────────────────── */
 .check-row {
   display: flex; align-items: center; gap: 8px;
-  font-size: var(--text-sm);
-  color: var(--fg-2);
+  font-size: 14px; color: var(--text-soft);
 }
-.check-row input[type="checkbox"] {
-  width: 16px; height: 16px;
-  accent-color: var(--fg-2);
-  cursor: pointer;
-}
+.check-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--text-soft); cursor: pointer; }
 
-/* ─── form footer links ───────────────────────────────────────────── */
-.form-footer {
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--muted);
-  margin-top: 4px;
-}
+.form-footer { text-align: center; font-size: 14px; color: var(--text-muted); margin-top: 4px; }
 .form-footer a { font-weight: 500; }
 
-/* ─── spinner inside button ───────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
   width: 18px; height: 18px;
-  border: 2px solid color-mix(in oklab, var(--accent-on) 30%, transparent);
-  border-top-color: var(--accent-on);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }

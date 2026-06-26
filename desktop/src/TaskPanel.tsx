@@ -30,7 +30,7 @@ function TaskPanel({ apiBase, token, status, onStatusChange }: Props) {
   const [createTag, setCreateTag] = useState(false);
   const [greetingText, setGreetingText] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [taskId, setTaskId] = useState<number | null>(null);
+  const [, setTaskId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [counters, setCounters] = useState({ success: 0, failed: 0, invalid: 0, total: 0 });
   const logEndRef = useRef<HTMLDivElement>(null);

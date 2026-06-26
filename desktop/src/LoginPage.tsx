@@ -11,7 +11,7 @@ type Tab = "login" | "register" | "reset";
 export default function LoginPage({ apiBase, machineCode, onLogin }: Props) {
   const [tab, setTab] = useState<Tab>("login");
   const [toast, setToast] = useState("");
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -30,35 +30,12 @@ export default function LoginPage({ apiBase, machineCode, onLogin }: Props) {
         }}>{toast}</div>
       )}
       <div className="app-window">
-        <TitleBar />
         <div className="app-body">
           <BrandPanel />
           <AuthPanel tab={tab} onTabChange={setTab} apiBase={apiBase} machineCode={machineCode} onLogin={onLogin} showToast={showToast} />
         </div>
       </div>
     </>
-  );
-}
-
-function TitleBar() {
-  return (
-    <div className="titlebar">
-      <div className="titlebar-left">
-        <div className="titlebar-logo">F</div>
-        <span className="titlebar-title">FriendAuto</span>
-      </div>
-      <div className="titlebar-controls">
-        <button className="win-btn" aria-label="最小化">
-          <svg viewBox="0 0 12 12"><rect x="1" y="5.5" width="10" height="1" fill="currentColor" /></svg>
-        </button>
-        <button className="win-btn" aria-label="最大化">
-          <svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
-        </button>
-        <button className="win-btn close" aria-label="关闭">
-          <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.2" fill="none" /></svg>
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -105,14 +82,14 @@ function AuthPanel({ tab, onTabChange, apiBase, machineCode, onLogin, showToast 
 
       {tab === "login" && <LoginForm apiBase={apiBase} machineCode={machineCode} onLogin={onLogin} showToast={showToast} onGotoRegister={() => onTabChange("register")} />}
       {tab === "register" && <RegisterForm apiBase={apiBase} machineCode={machineCode} onLogin={onLogin} showToast={showToast} onGotoLogin={() => onTabChange("login")} />}
-      {tab === "reset" && <ResetForm apiBase={apiBase} machineCode={machineCode} showToast={showToast} onGotoLogin={() => onTabChange("login")} />}
+      {tab === "reset" && <ResetForm apiBase={apiBase} showToast={showToast} onGotoLogin={() => onTabChange("login")} />}
     </div>
   );
 }
 
 function useSendCode(apiBase: string, showToast: (m: string) => void) {
   const [countdown, setCountdown] = useState(0);
-  const timer = useRef<ReturnType<typeof setInterval>>();
+  const timer = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const send = useCallback(async (email: string) => {
     if (!email) { showToast("请先输入邮箱地址"); return; }
@@ -292,8 +269,8 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   );
 }
 
-function ResetForm({ apiBase, machineCode, showToast, onGotoLogin }: {
-  apiBase: string; machineCode: string;
+function ResetForm({ apiBase, showToast, onGotoLogin }: {
+  apiBase: string;
   showToast: (m: string) => void;
   onGotoLogin: () => void;
 }) {
