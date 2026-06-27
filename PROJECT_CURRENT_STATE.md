@@ -1,6 +1,7 @@
 # FriendAuto 当前项目状态
 
 更新时间：2026-06-27
+最后提交：`ac9e22b` (网络异常处理) + `9e1f3a0` (侧边栏路由 + 轮播横幅)
 项目目录：`D:\FriendAuto`
 远程仓库：`https://github.com/zzw-0912/AddFriendAuto.git`
 当前分支：`master`
@@ -123,13 +124,25 @@ FriendAuto 是一个 Windows 桌面自动化产品，目标流程是：
 - `ProfilePage.tsx`：账号信息、会员状态、累计数据、推荐码及二维码
 - `SettingsPage.tsx`：任务默认配置、设备信息、修改密码、快捷入口
 
-### 网络异常处理 ✅（本会话新增）
+### 网络异常处理 ✅（上一会话）
 
 - `useNetworkStatus.ts`：单例模式 Hook，监听 `navigator.onLine` 和 `online`/`offline` 事件
 - `OfflineBanner.tsx`：断网时在内容区顶部显示红色警告横幅（带淡入动画）
 - `TaskPanel.tsx`：断网时开始按钮 disabled，启动任务前检查网络并日志提示
 - `api.ts`：统一 API 工具层（`apiGet`/`apiPost`/`readErrorDetail`）+ `NetworkError`/`AuthError` 异常类
 - 消除 `readErrorDetail` 重复代码（ProfilePage / SettingsPage 共用）
+
+### 侧边栏路由完善 ✅（本会话）
+
+- 品牌区（F logo + FriendAuto）改为可点击按钮，点击回到首页
+- 解决之前点进"我的"/"设置"后无法返回首页的问题
+
+### 轮播横幅 JS 交互 ✅（本会话）
+
+- Hero 区改为 3 张轮播：人脉拓展 / 多账号管理 / 标签分组
+- 自动轮播（每 5 秒）+ 鼠标悬停暂停
+- 底部圆点指示器，可点击跳转，当前高亮品牌蓝色
+- 平滑 CSS `cubic-bezier` 过渡动画
 
 ---
 
@@ -153,8 +166,8 @@ FriendAuto 是一个 Windows 桌面自动化产品，目标流程是：
 1. 桌面端真实联系人导入 / 筛选链路仍较弱
 2. 自动更新、日志导出、安装包签名尚未落地
 3. 协议与隐私文档、正式上线法务信息未补齐
-4. 侧边栏路由挂载（当前导航项为 UI 占位）
-5. 轮播横幅 JS 交互（自动轮播 + 指示器）
+4. 侧边栏路由挂载（**已完成** — 品牌区可点击回首页）
+5. 轮播横幅 JS 交互（**已完成** — 3 张轮播 + 自动播放 + 圆点指示器）
 
 ### 4.3 脚本集成待替换
 
@@ -297,7 +310,7 @@ FastAPI 后端服务
 
 ## 8. 重要文件修改记录
 
-### 8.1 本次会话改动（2026-06-27 — 网络异常处理）
+### 8.1 会话 A — 网络异常处理（`ac9e22b`）
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
@@ -311,7 +324,14 @@ FastAPI 后端服务
 | `desktop/src/ProfilePage.tsx` | 修改 | readErrorDetail 共用 api.ts |
 | `desktop/src/SettingsPage.tsx` | 修改 | readErrorDetail 共用 api.ts |
 
-### 8.2 上次会话改动（个人资料 + 设置页）
+### 8.2 会话 B — 侧边栏路由 + 轮播横幅（本会话，待提交）
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `desktop/src/MainPage.tsx` | 修改 | 品牌区可点击回到首页；Hero 改为 3 张轮播（自动播放+暂停+圆点指示器） |
+| `desktop/src/MainPage.css` | 修改 | 品牌按钮交互反馈；轮播过渡动画+圆点指示器样式 |
+
+### 8.3 上次会话改动（个人资料 + 设置页）
 
 | 文件 | 操作 | 说明 |
 |------|------|------|

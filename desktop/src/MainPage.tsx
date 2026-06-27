@@ -29,6 +29,24 @@ const BOTTOM_NAV_ITEMS = [
   { label: "设置", icon: "settings" },
 ];
 
+const HERO_SLIDES = [
+  {
+    title: "智能高效 · 轻松拓展人脉",
+    desc: "自动化加好友，精准筛选，高效管理",
+    cta: "立即体验",
+  },
+  {
+    title: "多账号同时管理",
+    desc: "支持多个微信账号绑定，任务独立配置运行",
+    cta: "了解更多",
+  },
+  {
+    title: "智能标签分组",
+    desc: "自动为新增好友添加标签，分类管理更方便",
+    cta: "开始使用",
+  },
+];
+
 function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
   return {
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
@@ -55,6 +73,8 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeNav, setActiveNav] = useState("");
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [slidePaused, setSlidePaused] = useState(false);
   const [taskDefaults, setTaskDefaults] = useState<TaskDefaults>(() => loadTaskDefaults());
   const [taskDefaultsVersion, setTaskDefaultsVersion] = useState(0);
 
@@ -78,6 +98,14 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
     const interval = setInterval(fetchStatus, 30000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  useEffect(() => {
+    if (slidePaused) return;
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [slidePaused]);
 
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
   const planId = status?.membership.plan_id;
@@ -124,28 +152,47 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
 
     return (
       <>
-        {/* Hero Banner */}
-        <section className="hero-panel" aria-label="功能横幅">
-          <div className="hero-track">
-            <article className="hero-slide">
-              <div className="hero-copy">
-                <h2 className="hero-title">智能高效 • 轻松拓展人脉</h2>
-                <p className="hero-desc">自动化加好友，精准筛选，高效管理</p>
-                <button className="hero-cta" type="button">立即体验</button>
-              </div>
-              <div className="hero-art" aria-hidden="true">
-                <div className="hero-ring" />
-                <div className="hero-card" />
-                <div className="hero-sheet"><div className="hero-line" /></div>
-                <div className="hero-avatar" />
-                <div className="hero-plus" />
-                <div className="hero-spark spark-a" />
-                <div className="hero-spark spark-b" />
-                <div className="hero-spark spark-c" />
-                <div className="hero-dash dash-a" />
-                <div className="hero-dash dash-b" />
-              </div>
-            </article>
+        {/* Hero Carousel */}
+        <section
+          className="hero-panel"
+          aria-label="功能横幅"
+          onMouseEnter={() => setSlidePaused(true)}
+          onMouseLeave={() => setSlidePaused(false)}
+        >
+          <div className="hero-track" style={{ transform: `translateX(-${currentSlide * 100}%)` }}>
+            {HERO_SLIDES.map((slide, i) => (
+              <article key={i} className="hero-slide">
+                <div className="hero-copy">
+                  <h2 className="hero-title">{slide.title}</h2>
+                  <p className="hero-desc">{slide.desc}</p>
+                  <button className="hero-cta" type="button">{slide.cta}</button>
+                </div>
+                <div className="hero-art" aria-hidden="true">
+                  <div className="hero-ring" />
+                  <div className="hero-card" />
+                  <div className="hero-sheet"><div className="hero-line" /></div>
+                  <div className="hero-avatar" />
+                  <div className="hero-plus" />
+                  <div className="hero-spark spark-a" />
+                  <div className="hero-spark spark-b" />
+                  <div className="hero-spark spark-c" />
+                  <div className="hero-dash dash-a" />
+                  <div className="hero-dash dash-b" />
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {/* Dots */}
+          <div className="hero-dots">
+            {HERO_SLIDES.map((_, i) => (
+              <button
+                key={i}
+                className={`hero-dot${i === currentSlide ? " active" : ""}`}
+                aria-label={`切换到第 ${i + 1} 张`}
+                onClick={() => setCurrentSlide(i)}
+              />
+            ))}
           </div>
         </section>
 
@@ -172,10 +219,10 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
       <div className="app-body">
         {/* Sidebar */}
         <aside className={`sidebar${sidebarCollapsed ? " collapsed" : ""}`}>
-          <div className="sidebar-brand">
+          <button className="sidebar-brand" type="button" onClick={() => setActiveNav("")}>
             <div className="brand-mark">F</div>
             <div className="sidebar-brand-name">FriendAuto</div>
-          </div>
+          </button>
 
           <nav className="sidebar-nav">
             {BOTTOM_NAV_ITEMS.map((item) => (

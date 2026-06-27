@@ -31,6 +31,16 @@
   align-items: center;
   gap: 14px;
   padding: 30px 22px 18px;
+  background: none;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+
+.sidebar .sidebar-brand:hover {
+  opacity: 0.78;
 }
 
 .sidebar .brand-mark {
@@ -267,6 +277,7 @@
 .hero-track {
   display: flex;
   height: 100%;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .hero-slide {
@@ -524,6 +535,38 @@
   right: 360px;
   top: 132px;
   width: 58px;
+}
+
+/* ─── Hero Carousel Dots ──────────────────────────── */
+.hero-dots {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.hero-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: rgba(47, 109, 246, 0.2);
+  cursor: pointer;
+  transition: background 200ms ease, transform 200ms ease;
+}
+
+.hero-dot:hover {
+  background: rgba(47, 109, 246, 0.45);
+  transform: scale(1.25);
+}
+
+.hero-dot.active {
+  background: var(--blue);
+  transform: scale(1.25);
 }
 
 /* ─── Task Card Container ─────────────────────────── */
