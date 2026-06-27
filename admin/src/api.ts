@@ -1,4 +1,13 @@
-const API_BASE = "";
+export const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+export function resolveAssetUrl(url: string) {
+  if (!url) return "";
+  if (/^(https?:)?\/\//.test(url) || url.startsWith("data:") || url.startsWith("blob:")) {
+    return url;
+  }
+  if (!API_BASE) return url;
+  return `${API_BASE.replace(/\/$/, "")}/${url.replace(/^\//, "")}`;
+}
 
 function getToken(): string | null {
   return localStorage.getItem("admin_token");
@@ -120,4 +129,8 @@ export async function getContacts(page = 1, pageSize = 20, q?: string) {
   let path = `/admin/contacts?page=${page}&page_size=${pageSize}`;
   if (q) path += `&q=${encodeURIComponent(q)}`;
   return request(path);
+}
+
+export async function getFeedback(page = 1, pageSize = 20) {
+  return request(`/admin/feedback?page=${page}&page_size=${pageSize}`);
 }

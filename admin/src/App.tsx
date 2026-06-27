@@ -9,9 +9,10 @@ import PlansPage from "./PlansPage";
 import OrdersPage from "./OrdersPage";
 import TasksPage from "./TasksPage";
 import AuditLogsPage from "./AuditLogsPage";
+import FeedbackPage from "./FeedbackPage";
 import "./style.css";
 
-type Page = "dashboard" | "users" | "user-detail" | "devices" | "plans" | "orders" | "tasks" | "audit-logs";
+type Page = "dashboard" | "users" | "user-detail" | "devices" | "plans" | "orders" | "tasks" | "audit-logs" | "feedback";
 
 function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
@@ -58,6 +59,7 @@ function App() {
           <button className={page === "orders" ? "active" : ""} onClick={() => navigate("orders")}>订单管理</button>
           <button className={page === "tasks" ? "active" : ""} onClick={() => navigate("tasks")}>任务日志</button>
           <button className={page === "audit-logs" ? "active" : ""} onClick={() => navigate("audit-logs")}>操作审计</button>
+          <button className={page === "feedback" ? "active" : ""} onClick={() => navigate("feedback")}>用户反馈</button>
         </nav>
         <div className="sidebar-footer">
           <button onClick={handleLogout}>退出登录</button>
@@ -74,6 +76,7 @@ function App() {
         {page === "orders" && <OrdersPage />}
         {page === "tasks" && <TasksPage />}
         {page === "audit-logs" && <AuditLogsPage />}
+        {page === "feedback" && <FeedbackPage />}
       </main>
     </div>
   );

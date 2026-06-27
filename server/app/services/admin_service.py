@@ -1,4 +1,5 @@
 import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
@@ -9,6 +10,7 @@ from app.models.admin_audit_log import AdminAuditLog
 from app.models.admin_user import AdminUser
 from app.models.contact import Contact
 from app.models.device import Device
+from app.models.feedback import Feedback
 from app.models.membership import Membership
 from app.models.order import Order
 from app.models.plan import Plan
@@ -414,6 +416,30 @@ def list_contacts(page: int, page_size: int, q: str | None, db: Session) -> dict
             "id": c.id, "wechat_nickname": c.wechat_nickname,
             "wechat_id": c.wechat_id, "tag": c.tag,
             "status": c.status, "remark": c.remark, "created_at": c.created_at,
+        })
+
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+def list_feedback(page: int, page_size: int, db: Session) -> dict:
+    query = db.query(Feedback).order_by(Feedback.id.desc())
+    total = query.count()
+    feedbacks = query.offset((page - 1) * page_size).limit(page_size).all()
+
+    user_cache: dict[int, str] = {}
+    items = []
+    for fb in feedbacks:
+        if fb.user_id not in user_cache:
+            u = db.query(User).filter(User.id == fb.user_id).first()
+            user_cache[fb.user_id] = u.email if u else None
+        images = json.loads(fb.images) if fb.images else None
+        items.append({
+            "id": fb.id,
+            "user_id": fb.user_id,
+            "email": user_cache[fb.user_id],
+            "content": fb.content,
+            "images": images,
+            "created_at": fb.created_at,
         })
 
     return {"items": items, "total": total, "page": page, "page_size": page_size}

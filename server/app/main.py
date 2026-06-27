@@ -1,12 +1,15 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.contacts import router as contacts_router
 from app.api.devices import router as devices_router
+from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.orders import router as orders_router
 from app.api.payments import router as payments_router
@@ -32,6 +35,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+uploads_dir = "uploads"
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(devices_router)
@@ -40,5 +47,6 @@ app.include_router(plans_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
 app.include_router(contacts_router)
+app.include_router(feedback_router)
 app.include_router(tasks_router)
 app.include_router(admin_router)

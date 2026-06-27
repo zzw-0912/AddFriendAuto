@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.core.database import SessionLocal, engine, Base
 from app.models.admin_user import AdminUser
+from app.models.feedback import Feedback
 from app.models.plan import Plan
 
 

@@ -3,7 +3,7 @@
 更新时间：2026-06-26
 项目目录：`D:\FriendAuto`
 远程仓库：`https://github.com/zzw-0912/AddFriendAuto.git`
-分支：`master`（所有提交已推送）
+分支：`master`（最新 commit: `ab08843`，未推送至远程 — 网络不通）
 
 ---
 
@@ -62,7 +62,7 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 
 ---
 
-## 三、已完成部分（共 19 次提交）
+## 三、已完成部分（共 20 次提交）
 
 ### 阶段 0：项目初始化与技术底座（7 次提交）
 
@@ -132,7 +132,7 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 - `0bd937c` — 重写项目快照文档
 - `95d08e0` — Stage 3 完整实现（TaskPanel, 事件流通信, 充值弹窗重设计）
 
-### 阶段 4：后台管理（当前阶段）
+### 阶段 4：后台管理 ✅
 
 - 后端 admin API 路由：登录、用户、设备、套餐、订单、任务、审计日志
 - 管理员独立 JWT 认证（`get_current_admin` 依赖注入）
@@ -141,20 +141,14 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 - 独立 React 管理前端（Vite + React + TypeScript）
 - 页面：概览 / 用户管理 / 设备管理 / 套餐管理 / 订单管理 / 任务日志 / 操作审计
 
-完成内容：
-- `POST /tasks/start-check` — 任务前校验（会员/试用/设备状态）
-- `GET /contacts/search` — 按微信昵称/微信号模糊搜索联系人
-- `POST /tasks/{id}/results` — 上报单条执行结果（含幂等扣次）
-- `POST /tasks/{id}/finish` — 结束任务并记录完成时间
-- 桌面端任务面板 `TaskPanel.tsx`：每日限额、创建标签、打招呼语、开始/停止
-- 实时日志滚动展示（颜色区分 success/failed/invalid/error）
-- 计数器：成功数、失败数、无效数
-- 状态展示：会员到期时间、剩余试用次数
-- Rust `start_task` 命令：stdin 传 JSON 配置 + BufReader 逐行读 stdout + emit Tauri 事件
-- Rust `stop_task` 命令：kill 子进程（Tauri state + Mutex 管理）
-- 测试脚本 `test_autobot.py` 重写：stdin 读 JSON、模拟 3 个联系人、逐行 JSON stdout
-- 充值弹窗 `PaymentModal.tsx` 全面重设计：三栏套餐卡片、功能列表、支付方式选择（微信/支付宝）、跳过试用链接
-- 仅 `event = success` 且无会员时扣试用次数，`run_id + contact_id` 幂等
+### 阶段 5 先行 — 侧边栏精简 + 套餐等级任务卡片（本会话）
+
+- 侧边栏：删除上半部分导航项（首页、自动加好友、联系人管理、任务记录），保留下半部分（客服、反馈、我的、设置）均匀分布
+- Membership 模型新增 `plan_id` 字段，支付回调时从订单写入
+- `/me/status` API 返回 `plan_id`，前端据此决定任务卡片数量
+- 提取 `TaskCard.tsx` 可复用组件，每个卡片独立运行（配置、日志、计数器）
+- 内容区改为纵向滚动，支持多个卡片垂直排列
+- 卡片数量：无会员/月卡=1、季卡=2、年卡=3
 
 ---
 
@@ -184,13 +178,15 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 
 | 决策 | 说明 |
 |------|------|
-| 邮箱+密码登录 | 注册时设密码，日常用邮箱+密码登录；注册和找回密码需验证码 |
+| 邮箱+密码登录 | 注册时设密码，日常用邮箱+密码登录；注册和找回密码需验证码（注意：PROJECT_PLAN.md 仍写的是"无密码登录"，实际已变更为密码登录，需同步） |
 | 多账号一设备 / 一账号一设备 | **一台设备可被多个账号绑定**（多人共用电脑）；**一个账号只能绑一台设备**，换设备需管理员后台改绑 |
 | 20 次试用额度 | 新用户自动获得 20 次成功加好友额度 |
 | 按成功扣次 | 只有 `event = success` 才扣试用，失败/无效/异常不扣 |
 | 会员覆盖试用 | 会员有效期内不扣试用次数 |
 | 会员叠加 | 续费时新的有效期从当前有效期结束后开始 |
 | 三档套餐 | 月卡 ¥29.9、季卡 ¥79.9、年卡 ¥299.9（价格由服务端配置） |
+| 套餐决定任务卡片数 | 月卡/试用=1个任务卡片、季卡=2个、年卡=3个，每个卡片独立运行 |
+| 侧边栏精简 | 仅保留底部导航（客服、反馈、我的、设置），删除功能导航项 |
 
 ### 技术决策
 
@@ -207,6 +203,8 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | 支付回调 mock | 开发环境直接 `POST /payments/*/callback?order_no=...` |
 | Tauri 事件流通信 | Rust BufReader 逐行读 stdout → `app_handle.emit("script-event")` → 前端 `listen()` |
 | 子进程管理 | Tauri State `Mutex<Option<Child>>`，支持 start/stop 和进程清理 |
+| 套餐等级存储 | Membership 模型新增 `plan_id` 列，支付时从订单写入，用于前端判断套餐等级 |
+| 可复用任务卡片 | 提取 `TaskCard.tsx`，按 `plan_id` 渲染 1/2/3 个独立卡片 |
 
 ---
 
@@ -219,7 +217,7 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | `devices` | id, user_id, machine_code_hash, status, bound_at, last_seen_at | 设备绑定 |
 | `plans` | id, name, duration_days, price_cents, enabled | 套餐配置 |
 | `orders` | id, order_no, user_id, plan_id, amount_cents, payment_channel, status | 订单 |
-| `memberships` | id, user_id, starts_at, ends_at, status | 会员期限 |
+| `memberships` | id, user_id, **plan_id**, starts_at, ends_at, status | 会员期限（含套餐等级） |
 | `trial_quotas` | id, user_id, device_id, total_count, used_count, remaining_count | 试用额度 |
 | `tasks` | id, user_id, device_id, daily_limit, create_tag, greeting_text, status | 任务记录 |
 | `task_results` | id, task_id, contact_id, result, **message**, trial_charged | 任务执行结果 |
@@ -304,6 +302,14 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | 2026-06-26 | `server/app/services/admin_service.py` | 用户详情返回全部设备列表；改绑时移除旧设备 |
 | 2026-06-26 | `server/app/schemas/admin.py` | `device` 字段改为 `devices: list[...]` |
 | 2026-06-26 | `admin/src/UserDetailPage.tsx` | 前端展示多设备卡片列表 |
+| 2026-06-26 | `server/app/models/membership.py` | 新增 `plan_id` 列 |
+| 2026-06-26 | `server/app/schemas/status.py` | `MembershipInfo` 新增 `plan_id` 字段 |
+| 2026-06-26 | `server/app/services/payment_service.py` | 创建会员时传入 `order.plan_id` |
+| 2026-06-26 | `server/app/services/status_service.py` | `/me/status` 返回 `plan_id` |
+| 2026-06-26 | `server/app/seed.py` | 添加 `ALTER TABLE memberships ADD COLUMN plan_id` 兼容 |
+| 2026-06-26 | `desktop/src/TaskCard.tsx` | **新增**：可复用任务卡片组件 |
+| 2026-06-26 | `desktop/src/MainPage.tsx` | 移除 NAV_ITEMS、集成 TaskCard、按 plan_id 渲染 N 个 |
+| 2026-06-26 | `desktop/src/MainPage.css` | 内容区 `overflow-y: auto`，卡片固定高度 `520px` |
 
 ---
 
@@ -312,27 +318,42 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 ### 启动命令
 
 ```bash
-# 后端
+# 后端（端口 8001）
 cd server
 $env:PYTHONPATH="$pwd"
-uvicorn app.main:app --reload --port 8001
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 
 # 桌面端
 cd desktop
 npm run tauri dev
+
+# 管理后台（端口 5173）
+cd admin
+npm run dev
 ```
 
 ### 测试账号
 
 - 邮箱：`test@friendauto.com`
-- 验证码：`888888`
-- 特点：开发环境自动跳过设备绑定，不需要真实 SMTP
+- 密码/验证码：`888888`
+- 特点：开发环境自动跳过设备绑定及密码验证
 
-### 常见问题
+### 常用操作
 
-- 端口 8001 被占用：`Stop-Process -Id (netstat -ano | findstr ':8001' | Select-Object -First 1) -replace '.*\s+(\d+)$','$1' -Force`
 - 重置数据库：删除 `server/friendauto.db`，重启后端自动重建
-- Python 脚本测试（独立运行）：`echo '{"run_id":"test","contacts":[]}' | python scripts/test_autobot.py`
+- 脚本独立测试：`echo '{"run_id":"test","contacts":[]}' | python scripts/test_autobot.py`
+- 端口被占：`netstat -ano | findstr ':8001'`
+
+### 配置说明
+
+SMTP 配置在 `server/.env`（已在 .gitignore 中，不会提交）：
+```
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_USER=your-email@qq.com
+SMTP_PASSWORD=your-auth-code
+SMTP_FROM_NAME=FriendAuto
+```
 
 ---
 
@@ -403,9 +424,9 @@ npm run tauri dev
 
 ---
 
-## 十二、下一阶段（Stage 5 — 上线打包、安全与稳定性）
+## 十二、下一阶段
 
-### 关键任务
+### 阶段 5 — 上线打包、安全与稳定性
 
 1. **真实支付接入**：微信支付验签 + 回调 + 支付宝验签 + 回调
 2. **支付幂等处理**：防止支付回调重复处理导致会员多次开通
@@ -419,7 +440,13 @@ npm run tauri dev
 10. **代码签名**：减少 Windows Defender 拦截
 11. **用户协议 + 隐私政策**：法律合规
 
-### 管理功能（已完成）
+### 前端待完善（来自 SESSION_SUMMARY.md）
+
+- 侧边栏路由挂载（当前导航项仅 UI 占位）
+- 轮播横幅 JS 交互（自动轮播 + 指示器）
+- 会员状态、试用次数动态刷新优化
+
+### 管理功能（已完成 ✅）
 
 管理后台已通过独立 React 前端 `admin/` 项目实现，包括：
 - 概览面板：系统数据统计卡片

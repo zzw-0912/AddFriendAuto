@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import PaymentModal from "./PaymentModal";
+import QRCodeModal from "./QRCodeModal";
+import FeedbackModal from "./FeedbackModal";
 import TaskCard from "./TaskCard";
 import "./MainPage.css";
 
@@ -25,6 +27,8 @@ const BOTTOM_NAV_ITEMS = [
 function MainPage({ apiBase, auth, onLogout }: Props) {
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeNav, setActiveNav] = useState("");
 
@@ -63,7 +67,12 @@ function MainPage({ apiBase, auth, onLogout }: Props) {
                 key={item.label}
                 className={`nav-item${activeNav === item.label ? " active" : ""}`}
                 href="#"
-                onClick={(e) => { e.preventDefault(); setActiveNav(item.label); }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setActiveNav(item.label);
+                  if (item.label === "客服") setShowQR(true);
+                  if (item.label === "反馈") setShowFeedback(true);
+                }}
               >
                 <NavIcon name={item.icon} />
                 <span className="nav-text">{item.label}</span>
@@ -155,6 +164,14 @@ function MainPage({ apiBase, auth, onLogout }: Props) {
               onClose={() => setShowPayment(false)}
               onSkipTrial={() => setShowPayment(false)}
             />
+      )}
+      <QRCodeModal visible={showQR} onClose={() => setShowQR(false)} qrImages={["/qr-wechat.png", "/qr-wechat-2.png"]} />
+      {showFeedback && (
+        <FeedbackModal
+          apiBase={apiBase}
+          token={auth.token}
+          onClose={() => setShowFeedback(false)}
+        />
       )}
     </div>
   );

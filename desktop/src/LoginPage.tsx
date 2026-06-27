@@ -103,8 +103,7 @@ function useSendCode(apiBase: string, showToast: (m: string) => void) {
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.detail || "发送失败"); setCountdown(0); return; }
-      if (data.dev_code) showToast(`验证码: ${data.dev_code}`);
-      else showToast("验证码已发送");
+      showToast("验证码已发送");
     } catch {
       showToast("无法连接服务器");
       setCountdown(0);

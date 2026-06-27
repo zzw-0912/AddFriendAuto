@@ -239,6 +239,15 @@ FriendAuto 是一款可上线交付客户使用的 Windows 桌面应用。客户
 - 独立 React 管理前端（用户管理、设备管理、套餐配置、订单管理、任务日志、操作审计）
 - 管理员种子账号：`admin` / `admin123`
 
+### 阶段 5 先行 — 侧边栏精简 + 套餐等级任务卡片 ✅
+- 侧边栏删除上半部分导航（首页、自动加好友、联系人管理、任务记录），仅保留底部导航（客服、反馈、我的、设置）
+- `Membership` 模型新增 `plan_id` 列，支付回调时从订单写入
+- `/me/status` 返回 `plan_id`，前端据此渲染 N 个任务卡片
+- 提取 `TaskCard.tsx` 可复用组件，每个卡片独立运行
+- 卡片数量：无会员/月卡=1、季卡=2、年卡=3，垂直排列可滚动
+
+已确认的架构和业务规则（保持不变）：
+
 已确认的架构和业务规则（保持不变）：
 
 - 项目要做 Windows 桌面端 `.exe`。
@@ -282,6 +291,12 @@ FriendAuto 是一款可上线交付客户使用的 Windows 桌面应用。客户
 | 2026-06-24 | `PROJECT_PLAN.md` | 新增项目规划、阶段拆分、关键决策、已完成部分、待办事项和架构思路 | 项目总纲文档 |
 | 2026-06-24 | `desktop/` | 完成 Tauri 工程搭建、登录页 UI、主界面、测试脚本联调 | Stage 0-3 |
 | 2026-06-25 | `server/` | 完成 admin API 路由（8 个端点）、管理后台 React 前端 | Stage 4 后端 + 前端 |
+| 2026-06-26 | `desktop/src/MainPage.tsx` | 删除侧边栏上半部分导航项（首页/自动加好友/联系人管理/任务记录） | 侧边栏精简 |
+| 2026-06-26 | `desktop/src/TaskCard.tsx` | **新增**：可复用任务卡片组件 | 按套餐等级展示 1/2/3 个 |
+| 2026-06-26 | `server/app/models/membership.py` | 新增 `plan_id` 列 | 存储套餐等级 |
+| 2026-06-26 | `server/app/schemas/status.py` | `MembershipInfo` 新增 `plan_id` | 前端据此渲染卡片数 |
+| 2026-06-26 | `server/app/services/payment_service.py` | 创建会员时传入 `order.plan_id` | |
+| 2026-06-26 | `server/app/services/status_service.py` | `/me/status` 返回 `plan_id` | |
 
 后续建议每次开发完成后都在此处追加记录。
 

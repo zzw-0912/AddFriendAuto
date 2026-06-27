@@ -22,6 +22,7 @@ from app.services.admin_service import (
     list_audit_logs,
     list_contacts,
     list_devices,
+    list_feedback,
     list_orders,
     list_plans,
     list_task_results,
@@ -169,3 +170,13 @@ def get_contacts(
     db: Session = Depends(get_db),
 ):
     return list_contacts(page, page_size, q, db)
+
+
+@router.get("/feedback")
+def get_feedback(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return list_feedback(page, page_size, db)

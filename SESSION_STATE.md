@@ -3,8 +3,7 @@
 更新时间：2026-06-26
 项目目录：`D:\FriendAuto`
 远程仓库：`https://github.com/zzw-0912/AddFriendAuto.git`
-分支：`master`（最新 commit: `76bafed`）
-上次会话新增 11 个文件改动，已全部推送。
+分支：`master`（最新 commit: `ab08843`，未推送至远程 — 网络不通）
 
 ---
 
@@ -152,6 +151,8 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 
 ## 五、本次会话改动清单（2026-06-26）
 
+### 会话 A — 设备绑定策略修正（已推送 `76bafed`）
+
 | 文件 | 操作 | 说明 |
 |------|------|------|
 | `server/app/services/auth_service.py` | 修改 | `_bind_device()` 改为按 `user_id+machine_code` 查重；移除设备跨账号拦截；恢复一账号一设备限制 |
@@ -159,8 +160,19 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | `server/app/services/admin_service.py` | 修改 | `get_user_detail()` 返回全部设备列表；`rebind_device()` 改绑时移除旧设备 |
 | `server/app/schemas/admin.py` | 修改 | `UserDetailResponse.device` → `devices: list[...]` |
 | `admin/src/UserDetailPage.tsx` | 修改 | 前端改为多设备卡片列表展示 |
-| `PROJECT_SNAPSHOT.md` | 修改 | 更新设备绑定策略说明、最新文件修改记录 |
-| `SESSION_STATE.md` | 修改 | 更新为本会话记录 |
+
+### 会话 B — 侧边栏精简 + 套餐等级任务卡片（本会话，未推送 `ab08843`）
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `desktop/src/MainPage.tsx` | 修改 | 移除 NAV_ITEMS（首页、自动加好友、联系人管理、任务记录）；集成 TaskCard；按 plan_id 渲染 N 个 |
+| `desktop/src/MainPage.css` | 修改 | 内容区 `overflow-y: auto`；侧边栏 `justify-content: space-evenly`；卡片固定 `height: 520px` |
+| `desktop/src/TaskCard.tsx` | **新增** | 可复用任务卡片组件（包裹 TaskPanel） |
+| `server/app/models/membership.py` | 修改 | 新增 `plan_id = Column(Integer, nullable=True)` |
+| `server/app/schemas/status.py` | 修改 | `MembershipInfo` 新增 `plan_id: int \| None` |
+| `server/app/services/payment_service.py` | 修改 | 创建 Membership 时传入 `plan_id=order.plan_id` |
+| `server/app/services/status_service.py` | 修改 | `/me/status` 返回 `plan_id` |
+| `server/app/seed.py` | 修改 | 添加 `ALTER TABLE memberships ADD COLUMN plan_id` 兼容 |
 
 ---
 
@@ -233,7 +245,7 @@ Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
 | `devices` | id, user_id, machine_code_hash, status, bound_at, last_seen_at | 设备绑定 |
 | `plans` | id, name, duration_days, price_cents, enabled | 套餐 |
 | `orders` | id, order_no, user_id, plan_id, amount_cents, payment_channel, status | 订单 |
-| `memberships` | id, user_id, starts_at, ends_at, status | 会员期限 |
+| `memberships` | id, user_id, **plan_id**, starts_at, ends_at, status | 会员期限 |
 | `trial_quotas` | id, user_id, device_id, total_count, used_count, remaining_count | 试用额度 |
 | `tasks` | id, user_id, device_id, daily_limit, create_tag, greeting_text, status | 任务 |
 | `task_results` | id, task_id, contact_id, result, message, trial_charged | 执行结果 |
@@ -274,8 +286,9 @@ D:\FriendAuto/
 │   │   ├── App.tsx             # 应用入口
 │   │   ├── App.css             # 设计系统（color-mix 取色）
 │   │   ├── LoginPage.tsx       # 三标签登录页（密码+验证码）
-│   │   ├── MainPage.tsx        # 主页面（状态栏+任务面板+充值弹窗）
-│   │   ├── TaskPanel.tsx       # 任务面板
+│   │   ├── MainPage.tsx        # 主页面（侧边栏+状态栏+任务卡片+充值弹窗）
+│   │   ├── TaskCard.tsx        # 可复用任务卡片组件
+│   │   ├── TaskPanel.tsx       # 任务面板（配置/日志/计数器）
 │   │   └── PaymentModal.tsx    # 充值弹窗
 │   └── src-tauri/src/
 │       ├── lib.rs              # 机器码/Token/任务进程管理
