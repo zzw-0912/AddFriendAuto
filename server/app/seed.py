@@ -1,4 +1,6 @@
 import hashlib
+import random
+import string
 
 from sqlalchemy import text
 
@@ -6,6 +8,7 @@ from app.core.database import SessionLocal, engine, Base
 from app.models.admin_user import AdminUser
 from app.models.feedback import Feedback
 from app.models.plan import Plan
+from app.models.user import User
 
 
 def init_db():
@@ -26,8 +29,29 @@ def init_db():
         except Exception:
             pass
 
+    if "sqlite" in str(engine.url):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN referral_code VARCHAR(16)"))
+                conn.commit()
+        except Exception:
+            pass
+
     db = SessionLocal()
     try:
+        users_missing = db.query(User).filter(User.referral_code.is_(None)).all()
+        existing_codes = {u.referral_code for u in db.query(User.referral_code).filter(User.referral_code.isnot(None)).all()}
+        chars = string.ascii_uppercase + string.digits
+        for u in users_missing:
+            for _ in range(100):
+                code = "".join(random.choices(chars, k=6))
+                if code not in existing_codes:
+                    u.referral_code = code
+                    existing_codes.add(code)
+                    break
+        if users_missing:
+            db.commit()
+
         if not db.query(Plan).first():
             plans = [
                 Plan(name="月卡", duration_days=30, price_cents=2999, enabled=True),

@@ -1,5 +1,6 @@
 import asyncio
 import random
+import string
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
@@ -93,6 +94,15 @@ def _create_trial_quota(user_id: int, db: Session):
         db.add(quota)
 
 
+def _generate_referral_code(db: Session) -> str:
+    chars = string.ascii_uppercase + string.digits
+    for _ in range(100):
+        code = "".join(random.choices(chars, k=6))
+        if not db.query(User).filter(User.referral_code == code).first():
+            return code
+    return hex(random.getrandbits(48))[2:10]
+
+
 def _issue_token(user_id: int, email: str) -> dict:
     access_token = create_access_token({"sub": str(user_id), "email": email})
     return {"access_token": access_token, "token_type": "bearer"}
@@ -104,7 +114,7 @@ def login(email: str, password: str, machine_code: str, db: Session) -> dict:
         user = db.query(User).filter(User.email == email).first()
         is_new = False
         if not user:
-            user = User(email=email)
+            user = User(email=email, referral_code=_generate_referral_code(db))
             db.add(user)
             db.flush()
             _create_trial_quota(user.id, db)
@@ -171,7 +181,7 @@ def register(email: str, password: str, code: str, machine_code: str, db: Sessio
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
-    user = User(email=email, password_hash=hash_password(password))
+    user = User(email=email, password_hash=hash_password(password), referral_code=_generate_referral_code(db))
     db.add(user)
     db.flush()
 

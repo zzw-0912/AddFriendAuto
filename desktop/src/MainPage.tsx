@@ -1,8 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import PaymentModal from "./PaymentModal";
 import QRCodeModal from "./QRCodeModal";
 import FeedbackModal from "./FeedbackModal";
+import ProfilePage from "./ProfilePage";
+import SettingsPage from "./SettingsPage";
 import TaskCard from "./TaskCard";
+import {
+  DEFAULT_TASK_DEFAULTS,
+  TASK_DEFAULTS_STORAGE_KEY,
+  type TaskDefaults,
+  type UserStatus,
+} from "./types";
 import "./MainPage.css";
 
 interface Props {
@@ -12,11 +20,6 @@ interface Props {
   onLogout: () => void;
 }
 
-interface UserStatus {
-  membership: { is_active: boolean; plan_id: number | null; ends_at: string | null };
-  trial: { total: number; used: number; remaining: number };
-}
-
 const BOTTOM_NAV_ITEMS = [
   { label: "客服", icon: "service" },
   { label: "反馈", icon: "feedback" },
@@ -24,32 +27,140 @@ const BOTTOM_NAV_ITEMS = [
   { label: "设置", icon: "settings" },
 ];
 
-function MainPage({ apiBase, auth, onLogout }: Props) {
+function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
+  return {
+    dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
+    createTag: Boolean(defaults?.createTag),
+    greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,
+  };
+}
+
+function loadTaskDefaults(): TaskDefaults {
+  try {
+    const raw = localStorage.getItem(TASK_DEFAULTS_STORAGE_KEY);
+    if (!raw) return DEFAULT_TASK_DEFAULTS;
+    return normalizeTaskDefaults(JSON.parse(raw) as Partial<TaskDefaults>);
+  } catch {
+    return DEFAULT_TASK_DEFAULTS;
+  }
+}
+
+function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeNav, setActiveNav] = useState("");
+  const [taskDefaults, setTaskDefaults] = useState<TaskDefaults>(() => loadTaskDefaults());
+  const [taskDefaultsVersion, setTaskDefaultsVersion] = useState(0);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`${apiBase}/me/status`, {
         headers: { Authorization: `Bearer ${auth.token}` },
       });
+      if (res.status === 401 || res.status === 403) {
+        onLogout();
+        return;
+      }
       if (res.ok) setStatus(await res.json());
     } catch {}
-  };
+  }, [apiBase, auth.token, onLogout]);
 
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(fetchStatus, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStatus]);
 
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
   const planId = status?.membership.plan_id;
   const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+
+  const handleTaskDefaultsChange = (defaults: TaskDefaults) => {
+    const nextDefaults = normalizeTaskDefaults(defaults);
+    setTaskDefaults(nextDefaults);
+    setTaskDefaultsVersion((version) => version + 1);
+    try {
+      localStorage.setItem(TASK_DEFAULTS_STORAGE_KEY, JSON.stringify(nextDefaults));
+    } catch {}
+  };
+
+  const renderMainContent = () => {
+    if (activeNav === "我的") {
+      return (
+        <ProfilePage
+          apiBase={apiBase}
+          token={auth.token}
+          email={auth.email}
+          onAuthExpired={onLogout}
+        />
+      );
+    }
+
+    if (activeNav === "设置") {
+      return (
+        <SettingsPage
+          apiBase={apiBase}
+          token={auth.token}
+          email={auth.email}
+          machineCode={machineCode}
+          status={status}
+          taskDefaults={taskDefaults}
+          onTaskDefaultsChange={handleTaskDefaultsChange}
+          onOpenPayment={() => setShowPayment(true)}
+          onOpenSupport={() => setShowQR(true)}
+          onOpenFeedback={() => setShowFeedback(true)}
+          onLogout={onLogout}
+        />
+      );
+    }
+
+    return (
+      <>
+        {/* Hero Banner */}
+        <section className="hero-panel" aria-label="功能横幅">
+          <div className="hero-track">
+            <article className="hero-slide">
+              <div className="hero-copy">
+                <h2 className="hero-title">智能高效 • 轻松拓展人脉</h2>
+                <p className="hero-desc">自动化加好友，精准筛选，高效管理</p>
+                <button className="hero-cta" type="button">立即体验</button>
+              </div>
+              <div className="hero-art" aria-hidden="true">
+                <div className="hero-ring" />
+                <div className="hero-card" />
+                <div className="hero-sheet"><div className="hero-line" /></div>
+                <div className="hero-avatar" />
+                <div className="hero-plus" />
+                <div className="hero-spark spark-a" />
+                <div className="hero-spark spark-b" />
+                <div className="hero-spark spark-c" />
+                <div className="hero-dash dash-a" />
+                <div className="hero-dash dash-b" />
+              </div>
+            </article>
+          </div>
+        </section>
+
+        {/* Task Cards */}
+        <div className="task-cards">
+          {Array.from({ length: cardCount }, (_, i) => (
+            <TaskCard
+              key={i}
+              apiBase={apiBase}
+              token={auth.token}
+              status={status}
+              taskDefaults={taskDefaults}
+              taskDefaultsVersion={taskDefaultsVersion}
+              onStatusChange={fetchStatus}
+            />
+          ))}
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="app-window main-layout">
@@ -116,43 +227,7 @@ function MainPage({ apiBase, auth, onLogout }: Props) {
             </div>
           </div>
 
-          {/* Hero Banner */}
-          <section className="hero-panel" aria-label="功能横幅">
-            <div className="hero-track">
-              <article className="hero-slide">
-                <div className="hero-copy">
-                  <h2 className="hero-title">智能高效 • 轻松拓展人脉</h2>
-                  <p className="hero-desc">自动化加好友，精准筛选，高效管理</p>
-                  <button className="hero-cta" type="button">立即体验</button>
-                </div>
-                <div className="hero-art" aria-hidden="true">
-                  <div className="hero-ring" />
-                  <div className="hero-card" />
-                  <div className="hero-sheet"><div className="hero-line" /></div>
-                  <div className="hero-avatar" />
-                  <div className="hero-plus" />
-                  <div className="hero-spark spark-a" />
-                  <div className="hero-spark spark-b" />
-                  <div className="hero-spark spark-c" />
-                  <div className="hero-dash dash-a" />
-                  <div className="hero-dash dash-b" />
-                </div>
-              </article>
-            </div>
-          </section>
-
-          {/* Task Cards */}
-          <div className="task-cards">
-            {Array.from({ length: cardCount }, (_, i) => (
-              <TaskCard
-                key={i}
-                apiBase={apiBase}
-                token={auth.token}
-                status={status}
-                onStatusChange={fetchStatus}
-              />
-            ))}
-          </div>
+          {renderMainContent()}
         </main>
       </div>
 

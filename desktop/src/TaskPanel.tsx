@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { TaskDefaults, UserStatus } from "./types";
 
 interface Props {
   apiBase: string;
   token: string;
-  status: { membership: { is_active: boolean; ends_at: string | null }; trial: { total: number; used: number; remaining: number } } | null;
+  status: UserStatus | null;
+  taskDefaults: TaskDefaults;
+  taskDefaultsVersion: number;
   onStatusChange: () => void;
 }
 
@@ -25,10 +28,10 @@ interface LogEntry {
 
 let logId = 0;
 
-function TaskPanel({ apiBase, token, status, onStatusChange }: Props) {
-  const [dailyLimit, setDailyLimit] = useState(20);
-  const [createTag, setCreateTag] = useState(false);
-  const [greetingText, setGreetingText] = useState("");
+function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, onStatusChange }: Props) {
+  const [dailyLimit, setDailyLimit] = useState(taskDefaults.dailyLimit);
+  const [createTag, setCreateTag] = useState(taskDefaults.createTag);
+  const [greetingText, setGreetingText] = useState(taskDefaults.greetingText);
   const [isRunning, setIsRunning] = useState(false);
   const [, setTaskId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -40,6 +43,37 @@ function TaskPanel({ apiBase, token, status, onStatusChange }: Props) {
     logId += 1;
     setLogs((prev) => [...prev, { id: logId, text, type }]);
   }, []);
+
+  const reportResult = useCallback(async (contactId: string | number | undefined, event: string, message: string) => {
+    const tid = taskIdRef.current;
+    if (!tid || !contactId) return;
+    try {
+      await fetch(`${apiBase}/tasks/${tid}/results`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ contact_id: Number(contactId), event, message }),
+      });
+    } catch {
+      addLog("上报结果失败", "error");
+    }
+  }, [addLog, apiBase, token]);
+
+  const finishCurrentTask = useCallback(async () => {
+    const tid = taskIdRef.current;
+    if (!tid) return;
+    try {
+      await fetch(`${apiBase}/tasks/${tid}/finish`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      addLog("结束任务失败", "error");
+    }
+    setTaskId(null);
+    taskIdRef.current = null;
+    setIsRunning(false);
+    onStatusChange();
+  }, [addLog, apiBase, onStatusChange, token]);
 
   const handleScriptEvent = useCallback((event: { payload: string }) => {
     try {
@@ -87,38 +121,7 @@ function TaskPanel({ apiBase, token, status, onStatusChange }: Props) {
     } catch {
       addLog(`收到脚本输出: ${event.payload}`, "normal");
     }
-  }, [addLog]);
-
-  const reportResult = async (contactId: string | number | undefined, event: string, message: string) => {
-    const tid = taskIdRef.current;
-    if (!tid || !contactId) return;
-    try {
-      await fetch(`${apiBase}/tasks/${tid}/results`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ contact_id: Number(contactId), event, message }),
-      });
-    } catch {
-      addLog("上报结果失败", "error");
-    }
-  };
-
-  const finishCurrentTask = async () => {
-    const tid = taskIdRef.current;
-    if (!tid) return;
-    try {
-      await fetch(`${apiBase}/tasks/${tid}/finish`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    } catch {
-      addLog("结束任务失败", "error");
-    }
-    setTaskId(null);
-    taskIdRef.current = null;
-    setIsRunning(false);
-    onStatusChange();
-  };
+  }, [addLog, finishCurrentTask, reportResult]);
 
   useEffect(() => {
     let unlistenFn: (() => void) | undefined;
@@ -131,6 +134,13 @@ function TaskPanel({ apiBase, token, status, onStatusChange }: Props) {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  useEffect(() => {
+    if (isRunning) return;
+    setDailyLimit(taskDefaults.dailyLimit);
+    setCreateTag(taskDefaults.createTag);
+    setGreetingText(taskDefaults.greetingText);
+  }, [isRunning, taskDefaults.dailyLimit, taskDefaults.createTag, taskDefaults.greetingText, taskDefaultsVersion]);
 
   const handleStart = async () => {
     setLogs([]);

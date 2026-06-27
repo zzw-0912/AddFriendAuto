@@ -14,6 +14,7 @@ from app.api.health import router as health_router
 from app.api.orders import router as orders_router
 from app.api.payments import router as payments_router
 from app.api.plans import router as plans_router
+from app.api.profile import router as profile_router
 from app.api.status import router as status_router
 from app.api.tasks import router as tasks_router
 from app.seed import init_db
@@ -48,5 +49,6 @@ app.include_router(orders_router)
 app.include_router(payments_router)
 app.include_router(contacts_router)
 app.include_router(feedback_router)
+app.include_router(profile_router)
 app.include_router(tasks_router)
 app.include_router(admin_router)

@@ -27,7 +27,14 @@ function App() {
       try {
         const stored = await invoke<StoredAuth | null>("load_token");
         if (stored?.token) {
-          setAuth(stored);
+          const res = await fetch(`${API_BASE}/me/status`, {
+            headers: { Authorization: `Bearer ${stored.token}` },
+          });
+          if (res.ok) {
+            setAuth(stored);
+          } else if (res.status === 401 || res.status === 403) {
+            await invoke("clear_token");
+          }
         }
       } catch {
         // no saved token
