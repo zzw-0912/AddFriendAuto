@@ -5,6 +5,8 @@ import FeedbackModal from "./FeedbackModal";
 import ProfilePage from "./ProfilePage";
 import SettingsPage from "./SettingsPage";
 import TaskCard from "./TaskCard";
+import OfflineBanner from "./OfflineBanner";
+import { useNetworkStatus } from "./useNetworkStatus";
 import {
   DEFAULT_TASK_DEFAULTS,
   TASK_DEFAULTS_STORAGE_KEY,
@@ -46,6 +48,7 @@ function loadTaskDefaults(): TaskDefaults {
 }
 
 function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
+  const { isOffline } = useNetworkStatus();
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -65,7 +68,9 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
         return;
       }
       if (res.ok) setStatus(await res.json());
-    } catch {}
+    } catch {
+      // network error — OfflineBanner handles the UI feedback
+    }
   }, [apiBase, auth.token, onLogout]);
 
   useEffect(() => {
@@ -227,6 +232,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
             </div>
           </div>
 
+          <OfflineBanner isOffline={isOffline} />
           {renderMainContent()}
         </main>
       </div>

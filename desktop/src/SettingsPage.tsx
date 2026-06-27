@@ -5,6 +5,7 @@ import {
   type UserStatus,
 } from "./types";
 import { useSendCode } from "./useSendCode";
+import { readErrorDetail } from "./api";
 
 const APP_VERSION = "0.1.0";
 
@@ -30,18 +31,6 @@ interface SettingsPageProps {
   onOpenSupport: () => void;
   onOpenFeedback: () => void;
   onLogout: () => void;
-}
-
-async function readErrorDetail(res: Response) {
-  const text = await res.text().catch(() => "");
-  if (!text) return "";
-  try {
-    const data = JSON.parse(text) as { detail?: unknown; message?: unknown };
-    if (typeof data.detail === "string") return data.detail;
-    if (typeof data.message === "string") return data.message;
-    if (data.detail) return JSON.stringify(data.detail);
-  } catch {}
-  return text;
 }
 
 function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {

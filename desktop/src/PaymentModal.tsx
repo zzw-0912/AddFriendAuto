@@ -43,7 +43,9 @@ function PaymentModal({ apiBase, token, trialRemaining, onClose, onSkipTrial }: 
           const mid = data.find((p) => p.name === "季卡")?.id ?? data[1]?.id ?? data[0]?.id;
           setSelectedPlanId(mid);
         }
-      } catch {}
+      } catch {
+        // network error — plans fetch fails silently, user sees empty state
+      }
     })();
   }, [apiBase, token]);
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useNetworkStatus } from "./useNetworkStatus";
 import type { TaskDefaults, UserStatus } from "./types";
 
 interface Props {
@@ -29,6 +30,7 @@ interface LogEntry {
 let logId = 0;
 
 function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, onStatusChange }: Props) {
+  const { isOnline } = useNetworkStatus();
   const [dailyLimit, setDailyLimit] = useState(taskDefaults.dailyLimit);
   const [createTag, setCreateTag] = useState(taskDefaults.createTag);
   const [greetingText, setGreetingText] = useState(taskDefaults.greetingText);
@@ -143,6 +145,11 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   }, [isRunning, taskDefaults.dailyLimit, taskDefaults.createTag, taskDefaults.greetingText, taskDefaultsVersion]);
 
   const handleStart = async () => {
+    if (!isOnline) {
+      addLog("无法启动：网络连接已断开", "error");
+      return;
+    }
+
     setLogs([]);
     setCounters({ success: 0, failed: 0, invalid: 0, total: 0 });
 
@@ -227,7 +234,7 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
           </div>
           <div className="task-actions">
             {!isRunning ? (
-              <button className="btn-start" onClick={handleStart}>开始任务</button>
+              <button className="btn-start" onClick={handleStart} disabled={!isOnline} title={!isOnline ? "网络已断开，无法启动任务" : ""}>开始任务</button>
             ) : (
               <button className="btn-stop" onClick={handleStop}>停止任务</button>
             )}

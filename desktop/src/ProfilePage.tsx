@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { readErrorDetail } from "./api";
 
 interface Props {
   apiBase: string;
@@ -29,17 +30,6 @@ interface Profile {
 interface LoadError {
   message: string;
   canRetry: boolean;
-}
-
-async function readErrorDetail(res: Response) {
-  const text = await res.text().catch(() => "");
-  if (!text) return "";
-  try {
-    const data = JSON.parse(text) as { detail?: unknown };
-    if (typeof data.detail === "string") return data.detail;
-    if (data.detail) return JSON.stringify(data.detail);
-  } catch {}
-  return text;
 }
 
 function ProfilePage({ apiBase, token, email, onAuthExpired }: Props) {
