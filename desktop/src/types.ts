@@ -4,6 +4,12 @@ export interface TaskDefaults {
   greetingText: string;
 }
 
+export interface AutoDoorConfig {
+  autodoorSourcePath: string;
+  projectPath: string;
+  editorExecutablePath: string;
+}
+
 export const TASK_DEFAULTS_STORAGE_KEY = "friendauto.taskDefaults.v1";
 
 export const DEFAULT_TASK_DEFAULTS: TaskDefaults = {

@@ -1,404 +1,185 @@
-# FriendAuto — 会话状态快照
+# FriendAuto 项目交接快照
 
-更新时间：2026-06-26
-项目目录：`D:\FriendAuto`
-远程仓库：`https://github.com/zzw-0912/AddFriendAuto.git`
-分支：`master`（最新 commit: `ab08843`，未推送至远程 — 网络不通）
-
----
-
-## 一、项目目标
-
-FriendAuto 是一款 Windows 桌面应用，客户通过 `.exe` 安装后，完成**邮箱密码注册/登录** → **设备绑定** → **会员充值或试用** → **配置每日自动加好友任务**。桌面端负责传参给已有 Python 自动化程序、启动程序、接收结果、上报服务器。
+更新时间：2026-06-28  
+项目目录：`D:\FriendAuto`  
+远程仓库：`https://github.com/zzw-0912/AddFriendAuto.git`  
+当前分支：`master`  
+当前基线提交：`6f3bea7`
 
 ---
 
-## 二、架构思路
+## 1. 项目定位与总体架构
 
-### 总体架构
+FriendAuto 是 Windows 桌面端自动加好友工具。用户在桌面端完成登录、设备绑定、会员/试用校验和任务配置后，由本地 Python worker 调用 AutoDoor 行为树项目执行微信自动化，并把结果通过 stdout JSON 事件流返回桌面端，再由桌面端上报后端。
 
-```
-Windows 桌面端 (Tauri v2 + React + TypeScript)
-    │
-    │ HTTPS REST API (http://127.0.0.1:8001)
-    ▼
-FastAPI 后端服务 (SQLAlchemy ORM)
-    │
-    ▼
-SQLite (开发) / PostgreSQL (生产)
-
-Windows 桌面端
-    │
-    │ 本地进程 (std::process::Command → stdin/stdout JSON)
-    ▼
-Python 自动化程序 (scripts/test_autobot.py → 替换为真实脚本)
+```text
+React + Tauri 桌面端
+  -> FastAPI 后端：账号、设备、会员、试用、任务、结果
+  -> Rust Command 启动 Python worker
+  -> Python worker 拷贝并补丁 AutoDoor 项目
+  -> AutoDoor BehaviorTreeEngine 执行微信行为树
+  -> stdout JSON line 事件回到桌面端
 ```
 
-### 职责划分
+核心职责边界：
 
-| 层 | 职责 | 不负责 |
+| 模块 | 职责 | 不负责 |
 |---|---|---|
-| **桌面端** | UI、登录(邮箱+密码)、机器码采集、展示状态、启动脚本、展示日志、上报结果 | 不判断会员/密码/试用 |
-| **后端** | 注册登录、密码哈希(bcrypt)、验证码校验、token 签发、设备绑定、会员判断、试用扣次、订单创建、支付回调、任务校验、结果记录 | — |
-| **Python 脚本** | 接收参数、执行自动化、返回结果 | 不判断会员、充值、试用 |
-| **后台管理** | 用户管理、设备改绑、会员操作、订单查看、任务日志、操作审计 | — |
-
-### 安全设计
-
-- 密码用 bcrypt 哈希存储
-- 商业规则由服务端裁决，客户端只展示服务端返回的状态
-- 支付密钥只存在于服务端
-- 试用次数保存在服务端，卸载重装不能重置
-- 机器码上传前做 SHA256 哈希，不上传明文硬件信息
-- 关键接口（扣次、支付回调）做幂等处理
-- 支付成功以服务端回调验签为准，不信任客户端轮询
+| 桌面端 | UI、登录态、机器码、任务配置、启动/停止 worker、展示日志、上报结果 | 不裁决会员/试用规则 |
+| 后端 | 注册登录、设备绑定、会员状态、试用扣次、任务结果幂等 | 不执行本机自动化 |
+| Python worker | 读任务 JSON、准备 AutoDoor 运行副本、执行引擎、输出事件 | 不判断商业规则 |
+| AutoDoor 项目 | 图像识别、点击、输入、窗口绑定等实际自动化动作 | 不知道 FriendAuto 会员/任务模型 |
 
 ---
 
-## 三、关键决策
+## 2. 关键决策
 
-### 产品决策
-
-| 决策 | 说明 |
-|------|------|
-| 邮箱密码登录 | 注册时设密码，日常用邮箱+密码登录；注册和找回密码需验证码 |
-| 多账号一设备 / 一账号一设备 | **一台设备可被多个账号绑定**（多人共用电脑）；**一个账号只能绑一台设备**，换设备需管理员后台改绑 |
-| 20 次试用额度 | 新用户自动获得 20 次成功加好友额度 |
-| 按成功扣次 | 只有 `event = success` 才扣试用，失败/无效/异常不扣 |
-| 会员覆盖试用 | 会员有效期内不扣试用次数 |
-| 会员叠加 | 续费时新的有效期从当前有效期结束后开始 |
-| 三档套餐 | 月卡 ¥29.9、季卡 ¥79.9、年卡 ¥299.9（价格由服务端配置） |
-| 邮箱 SMTP 发送 | 使用 QQ邮箱 SMTP + 授权码，aiosmtplib 异步发送 HTML 模板邮件 |
-
-### 技术决策
-
-| 决策 | 说明 |
-|------|------|
-| Tauri v2 + React + TypeScript | 桌面端技术栈，原生窗口 + Web UI |
-| FastAPI + SQLAlchemy | 后端框架 + ORM |
-| SQLite 开发 / PostgreSQL 生产 | 环境切换通过 `database_url` 配置 |
-| 密码哈希 (bcrypt) | 使用 `bcrypt` 库，与验证码的 SHA256 分开 |
-| 验证码哈希 (SHA256) | passlib 和 bcrypt 5.x 不兼容，验证码短时效无需 bcrypt |
-| 邮箱发送 (aiosmtplib) | 异步非阻塞发送，debug 模式返回 `dev_code` 方便联调 |
-| 发送频率限制 | 同一邮箱 60 秒内只能发一次验证码 |
-| WMIC csproduct UUID | Windows 机器码采集，不引入额外 Rust crate |
-| 本地 JSON Token 存储 | `dirs_next::data_dir` + `auth.json`，在 `%APPDATA%/FriendAuto/auth.json` |
-| `std::process::Command` | Rust 原生进程启动，不用 Tauri shell 插件 |
-| 测试账号 | `test@friendauto.com` + `888888` 跳过密码+设备绑定检查 |
-| 支付回调 mock | 开发环境直接 `POST /payments/*/callback?order_no=...` |
-| Tauri 事件流通信 | Rust BufReader 逐行读 stdout → `emit("script-event")` → 前端 `listen()` |
-| 子进程管理 | Tauri State `Mutex<Option<Child>>`，支持 start/stop 和进程清理 |
+| 决策 | 当前结论 |
+|---|---|
+| 桌面技术栈 | Tauri v2 + React + TypeScript |
+| 后端技术栈 | FastAPI + SQLAlchemy，开发用 SQLite |
+| 脚本通信 | Rust `Command` 启动 Python，stdin 输入任务 JSON，stdout 逐行输出 JSON |
+| 自动化接入 | 不再使用 `scripts/test_autobot.py`，改用 `scripts/platform_worker.py` 作为真实 AutoDoor 桥接 |
+| AutoDoor 默认路径 | 源码：`D:\AddFriend\autodoor_behavior_tree`；项目：`D:\AddFriend\Addfriend` |
+| AutoDoor 配置持久化 | `%APPDATA%\FriendAuto\autodoor.json` |
+| 运行副本 | 每次任务复制 AutoDoor 项目到 `%APPDATA%\FriendAuto\runs\<run_id>\Addfriend`，只修改副本 |
+| DPI | worker 必须调用 AutoDoor 的 `initialize_dpi_awareness()`，否则坐标会偏 |
+| 手机号来源 | 当前仍从 AutoDoor 行为树“输入手机号”节点的 `preset_texts` 读取 |
+| 扣次规则 | 只有 worker 输出 `event=success` 时，后端才扣试用次数 |
+| 结果幂等 | 后端按 `task_id + contact_id` 去重，避免重复扣次 |
 
 ---
 
-## 四、已完成部分
+## 3. 已完成部分
 
-### 阶段 0：项目初始化与技术底座 ✅
+后端与桌面基础：
 
-- Tauri v2 + React + TypeScript + Vite 工程搭建
-- FastAPI 后端工程，SQLAlchemy ORM，SQLite 数据库
-- 13 张数据表自动创建
-- 三档套餐数据种子
-- 测试 Python 脚本 `scripts/test_autobot.py`
-- 健康检查接口 `GET /health`
-- 一键启动脚本 `start_server.bat`、`start_desktop.bat`
+- 邮箱密码登录、注册、找回密码、验证码、token 持久化。
+- 设备绑定、会员状态、试用次数、任务创建和结果上报。
+- 后台管理、反馈、订单、套餐、任务日志等基础页面。
+- 桌面端主界面、设置页、任务面板、网络异常提示。
 
-### 阶段 1：账号、登录与设备绑定 ✅
+AutoDoor 集成：
 
-- `POST /auth/send-code` — 邮件验证码发送（QQ邮箱 SMTP 真实发送，debug 模式回显验证码）
-- `POST /auth/login` — 邮箱+密码登录（自动设备绑定）
-- `POST /auth/register` — 邮箱+密码+验证码注册（自动设备绑定+创建试用额度）
-- `POST /auth/reset-password` — 验证码+新密码重置
-- `POST /auth/refresh` — Token 刷新
-- `POST /devices/bind` / `GET /devices/current` — 设备绑定与查询
-- 验证码 SHA256 哈希存储 + 密码 bcrypt 哈希存储
-- 机器码 WMIC + Token 持久化
-- 桌面端三标签登录页（登录/注册/找回密码）—— 全新 UI 设计
+- 新增真实 worker：`scripts/platform_worker.py`。
+- Tauri `start_task` 已改为启动 worker，而不是测试脚本。
+- worker 支持读取 `%APPDATA%\FriendAuto\autodoor.json`，默认使用 `D:\AddFriend` 下的 AutoDoor 路径。
+- 设置页新增“自动化平台设置”，可保存 AutoDoor 源码目录、项目目录、编辑器 exe 路径，并可直接打开编辑器。
+- worker 运行前会：
+  - 拷贝 AutoDoor 项目到每次运行目录。
+  - 按 `daily_limit` 截取手机号池。
+  - 写入打招呼语。
+  - 根据 `create_tag=false` 跳过标签/备注流。
+  - 只从 root 可达且启用的“输入手机号”节点取号码，避免禁用副本干扰。
+  - 校验手机号必须是 11 位数字，坏号会提前报错。
+  - 调用 AutoDoor DPI 初始化，修正 FriendAuto 启动时坐标偏差。
+- 前端任务收尾加了 `isFinishingRef`，避免 `finished` 和 `exited` 两个事件重复结束任务。
+- Rust 启动 worker 时设置 `PYTHONIOENCODING=utf-8` 和 `PYTHONUTF8=1`，避免中文/emoji 在 Windows GBK 环境下输出失败。
 
-### 阶段 2：会员、试用与充值 ✅
+本地 AutoDoor 项目状态：
 
-- `GET /me/status` — 会员 + 试用状态查询
-- `GET /plans` — 套餐列表
-- `POST /orders` — 创建订单 + `GET /orders/{id}` — 查询订单
-- `POST /payments/wechat/callback` — 模拟微信支付回调
-- `POST /payments/alipay/callback` — 模拟支付宝支付回调
-- 新用户自动创建 20 次试用额度 + 会员叠加逻辑
-- 桌面端充值弹窗（三栏套餐卡片 + 支付方式选择）
-- 登录 UI 全新设计（设计系统复刻）
-
-### 阶段 3：主界面与自动化脚本联调 ✅
-
-- `POST /tasks/start-check` — 任务前校验
-- `GET /contacts/search` — 联系人筛选
-- `POST /tasks/{id}/results` — 结果上报（幂等扣次）
-- `POST /tasks/{id}/finish` — 结束任务
-- 桌面端任务面板 `TaskPanel.tsx`（配置/日志/计数器）
-- Rust 脚本集成：stdin JSON + BufReader + Tauri 事件流
-- 充值弹窗 `PaymentModal.tsx` 全面重设计
-
-### 阶段 4：后台管理 ✅
-
-- `POST /admin/login` — 管理员登录（独立 JWT）
-- 用户管理：列表、详情、会员延长/冻结/解冻
-- 设备管理：列表、解绑、改绑、备注编辑
-- 套餐管理：价格在线配置
-- 订单管理：列表、状态筛选
-- 任务日志：列表、执行结果弹窗
-- 操作审计：完整操作日志
-- 独立 React 管理前端（7 个页面）
+- `D:\AddFriend\Addfriend\tree.json` 的 `node_45.config.preset_texts[0]` 已从 `1355906309` 修为 `13559063090`。
+- 这个文件位于仓库外，不能随 FriendAuto git 提交一起推送；新机器或新 AutoDoor 项目需要单独确认。
 
 ---
 
-## 五、本次会话改动清单（2026-06-26）
+## 4. 重要文件修改记录
 
-### 会话 A — 设备绑定策略修正（已推送 `76bafed`）
-
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `server/app/services/auth_service.py` | 修改 | `_bind_device()` 改为按 `user_id+machine_code` 查重；移除设备跨账号拦截；恢复一账号一设备限制 |
-| `server/app/services/device_service.py` | 修改 | `bind_device()` 同步变更；清理未使用的 import |
-| `server/app/services/admin_service.py` | 修改 | `get_user_detail()` 返回全部设备列表；`rebind_device()` 改绑时移除旧设备 |
-| `server/app/schemas/admin.py` | 修改 | `UserDetailResponse.device` → `devices: list[...]` |
-| `admin/src/UserDetailPage.tsx` | 修改 | 前端改为多设备卡片列表展示 |
-
-### 会话 B — 侧边栏精简 + 套餐等级任务卡片（本会话，未推送 `ab08843`）
-
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `desktop/src/MainPage.tsx` | 修改 | 移除 NAV_ITEMS（首页、自动加好友、联系人管理、任务记录）；集成 TaskCard；按 plan_id 渲染 N 个 |
-| `desktop/src/MainPage.css` | 修改 | 内容区 `overflow-y: auto`；侧边栏 `justify-content: space-evenly`；卡片固定 `height: 520px` |
-| `desktop/src/TaskCard.tsx` | **新增** | 可复用任务卡片组件（包裹 TaskPanel） |
-| `server/app/models/membership.py` | 修改 | 新增 `plan_id = Column(Integer, nullable=True)` |
-| `server/app/schemas/status.py` | 修改 | `MembershipInfo` 新增 `plan_id: int \| None` |
-| `server/app/services/payment_service.py` | 修改 | 创建 Membership 时传入 `plan_id=order.plan_id` |
-| `server/app/services/status_service.py` | 修改 | `/me/status` 返回 `plan_id` |
-| `server/app/seed.py` | 修改 | 添加 `ALTER TABLE memberships ADD COLUMN plan_id` 兼容 |
+| 文件 | 作用 | 本次关键修改 |
+|---|---|---|
+| `scripts/platform_worker.py` | FriendAuto 到 AutoDoor 的桥接 worker | 新增运行副本、行为树补丁、手机号校验、DPI 初始化、AutoDoor 事件转 FriendAuto 事件 |
+| `desktop/src-tauri/src/lib.rs` | Tauri Rust 命令层 | 新增 AutoDoor 配置读写、打开编辑器、启动 worker、stderr 转错误事件、UTF-8 环境变量 |
+| `desktop/src/SettingsPage.tsx` | 桌面端设置页 | 新增自动化平台路径配置表单和打开编辑器按钮 |
+| `desktop/src/types.ts` | 前端共享类型 | 新增 `AutoDoorConfig` |
+| `desktop/src/MainPage.css` | 桌面端样式 | 新增自动化路径设置输入布局 |
+| `desktop/src/TaskPanel.tsx` | 任务启动与日志面板 | 传 `task_id` 给 worker，避免重复 finish，保留网络断开时阻止启动 |
+| `D:\AddFriend\Addfriend\tree.json` | AutoDoor 行为树项目 | 仓库外修改：修正 `node_45` 第一条手机号为 11 位 |
 
 ---
 
-## 六、API 接口清单
+## 5. 当前验证结果
 
-### 认证
+已通过：
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/auth/send-code` | 发送邮箱验证码（60 秒频率限制） |
-| POST | `/auth/login` | 邮箱+密码登录（自动设备绑定） |
-| POST | `/auth/register` | 邮箱+密码+验证码注册 |
-| POST | `/auth/reset-password` | 验证码+新密码重置 |
-| POST | `/auth/refresh` | 刷新 token |
-
-### 设备
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/devices/bind` | 绑定设备 |
-| GET | `/devices/current` | 当前设备信息 |
-
-### 会员与支付
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/me/status` | 会员+试用状态 |
-| GET | `/plans` | 套餐列表 |
-| POST | `/orders` | 创建订单 |
-| GET | `/orders/{id}` | 订单详情 |
-| POST | `/payments/wechat/callback` | 微信支付回调（mock） |
-| POST | `/payments/alipay/callback` | 支付宝支付回调（mock） |
-
-### 任务与联系人
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/tasks/start-check` | 任务前校验 |
-| GET | `/contacts/search` | 搜索联系人 |
-| POST | `/tasks/{id}/results` | 上报执行结果（幂等） |
-| POST | `/tasks/{id}/finish` | 结束任务 |
-
-### 后台管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/admin/login` | 管理员登录 |
-| GET | `/admin/users` | 用户列表 |
-| GET | `/admin/users/{id}` | 用户详情 |
-| PATCH | `/admin/users/{id}/membership` | 修改会员 |
-| GET | `/admin/devices` | 设备列表 |
-| PATCH | `/admin/devices/{id}` | 更新设备（解绑/备注） |
-| POST | `/admin/devices/{id}/rebind` | 设备改绑 |
-| GET | `/admin/plans` | 套餐列表 |
-| PATCH | `/admin/plans/{id}` | 更新套餐 |
-| GET | `/admin/orders` | 订单列表 |
-| GET | `/admin/tasks` | 任务日志 |
-| GET | `/admin/tasks/{id}/results` | 任务明细 |
-| GET | `/admin/audit-logs` | 操作审计 |
-| GET | `/admin/contacts` | 联系人搜索 |
-
----
-
-## 七、数据库设计（13 张表）
-
-| 表名 | 核心字段 | 用途 |
-|------|---------|------|
-| `users` | id, email, **password_hash**, status, created_at, last_login_at | 用户账号 |
-| `email_codes` | id, email, code_hash(SHA256), expires_at, used_at | 验证码 |
-| `devices` | id, user_id, machine_code_hash, status, bound_at, last_seen_at | 设备绑定 |
-| `plans` | id, name, duration_days, price_cents, enabled | 套餐 |
-| `orders` | id, order_no, user_id, plan_id, amount_cents, payment_channel, status | 订单 |
-| `memberships` | id, user_id, **plan_id**, starts_at, ends_at, status | 会员期限 |
-| `trial_quotas` | id, user_id, device_id, total_count, used_count, remaining_count | 试用额度 |
-| `tasks` | id, user_id, device_id, daily_limit, create_tag, greeting_text, status | 任务 |
-| `task_results` | id, task_id, contact_id, result, message, trial_charged | 执行结果 |
-| `contacts` | id, wechat_nickname, wechat_id, tag, status | 联系人 |
-| `payments` | id, order_id, channel, transaction_id, amount_cents, status | 支付记录 |
-| `admin_users` | id, username, password_hash, role, status | 管理员 |
-| `admin_audit_logs` | id, admin_user_id, action, target_type, target_id, detail | 操作审计 |
-
----
-
-## 八、待办事项
-
-### 阶段 5 — 上线前必须完成
-
-- [ ] 真实微信支付接入（验签、回调）
-- [ ] 真实支付宝支付接入（验签、回调）
-- [ ] 支付幂等处理（防止重复回调）
-- [ ] PostgreSQL 生产环境切换
-- [ ] Windows `.exe` 打包（Tauri build）
-- [ ] 客户端自动更新（Tauri updater）
-- [ ] HTTPS 服务部署（Nginx + SSL）
-- [ ] 接口限流（验证码、订单、任务）
-- [ ] 客户端日志导出
-- [ ] 网络断开时的错误提示和状态处理
-- [ ] 代码签名（减少 Windows 安全提示）
-- [ ] 用户协议、隐私政策
-- [ ] 异常告警和服务器监控
-- [ ] 安装包在干净 Windows 环境验证
-
----
-
-## 九、项目结构
-
-```
-D:\FriendAuto/
-├── desktop/                    # Tauri 桌面端
-│   ├── src/
-│   │   ├── App.tsx             # 应用入口
-│   │   ├── App.css             # 设计系统（color-mix 取色）
-│   │   ├── LoginPage.tsx       # 三标签登录页（密码+验证码）
-│   │   ├── MainPage.tsx        # 主页面（侧边栏+状态栏+任务卡片+充值弹窗）
-│   │   ├── TaskCard.tsx        # 可复用任务卡片组件
-│   │   ├── TaskPanel.tsx       # 任务面板（配置/日志/计数器）
-│   │   └── PaymentModal.tsx    # 充值弹窗
-│   └── src-tauri/src/
-│       ├── lib.rs              # 机器码/Token/任务进程管理
-│       └── main.rs
-├── server/                     # FastAPI 后端
-│   ├── app/
-│   │   ├── main.py             # 应用入口
-│   │   ├── seed.py             # 建表+种子数据+迁移
-│   │   ├── core/
-│   │   │   ├── config.py       # pydantic-settings
-│   │   │   ├── database.py     # SQLAlchemy 引擎
-│   │   │   ├── security.py     # JWT + SHA256 + bcrypt
-│   │   │   └── deps.py         # 依赖注入
-│   │   ├── api/                # 路由（auth/devices/status/...）
-│   │   ├── models/             # ORM 模型
-│   │   ├── schemas/            # Pydantic schema
-│   │   └── services/           # 业务逻辑（含 email_service.py）
-│   ├── .env                    # SMTP+密钥（gitignored）
-│   └── friendauto.db           # SQLite
-├── admin/                      # 管理后台前端（独立 React 项目）
-├── scripts/test_autobot.py     # 测试自动化脚本
-├── start_server.bat
-├── start_desktop.bat
-├── PROJECT_PLAN.md             # 项目规划（总纲）
-├── PROJECT_MANAGEMENT.md       # 项目管理（关键决策+阶段完成清单）
-├── PROJECT_SNAPSHOT.md         # 项目快照（跨会话交接用）
-├── SESSION_STATE.md            # 本文件（当前会话详细状态）
+```powershell
+python -m py_compile scripts\platform_worker.py
+npm run build
+cargo check
 ```
 
+已做过的 worker 探针：
+
+- `patch_tree(daily_limit=1, create_tag=true)` 能稳定取到 `13559063090`。
+- `patch_tree(daily_limit=2, create_tag=false)` 能稳定取前两条号码并跳过标签/备注流。
+- 连续多次补丁探针不再随机读取禁用节点。
+- 坏号会提前报错，例如：`手机号池包含无效手机号: node=node_45, index=0, value='123'`。
+- worker 调用 `import_autodoor()` 后，`bt_utils.dpi_awareness.get_dpi_scale()` 在当前机器上为 `1.5`，与 AutoDoor Dist 启动行为一致。
+
+尚未完成稳定验收：
+
+- 需要用 FriendAuto 桌面端执行一次受控真实任务（建议 `daily_limit=1`）。
+- 真实跑前建议只保留一个目标微信主窗口，避免同名窗口标题导致 AutoDoor 绑定不确定。
+
 ---
 
-## 十、开发环境
+## 6. 当前待办事项
 
-### 启动命令
+高优先级：
 
-```bash
-# 后端（端口 8001）
-cd server
-$env:PYTHONPATH="$pwd"
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+1. 用 FriendAuto 桌面端真实启动 `daily_limit=1`，确认点击位置与 AutoDoor Dist 一致。
+2. 若仍有偏差，抓取 worker 输出日志和 AutoDoor 节点状态，重点看绑定窗口 hwnd、DPI scale、模板匹配坐标。
+3. 把 AutoDoor 行为树项目的关键修复纳入可追踪流程；当前 `D:\AddFriend\Addfriend` 不在 git 仓库内。
 
-# 桌面端
+中优先级：
+
+1. 将手机号来源从 AutoDoor `preset_texts` 改为后端联系人列表/任务配置下发，避免每次用 AutoDoor 编辑器维护号码。
+2. 为 worker 增加“只检测不点击”的诊断模式，输出识别到的模板位置、窗口 hwnd、DPI、截图区域。
+3. 增加任务失败时的详细错误事件，例如窗口未找到、模板最高置信度、节点 id。
+4. 打包前确认生产环境 Python 版本和 AutoDoor 依赖一致；当前本机 Python 是 3.10，AutoDoor 打包 `_internal` 多数为 cp311 pyd，worker 当前主要依赖源码目录和本机 site-packages。
+
+低优先级：
+
+1. 设置页增加“测试配置”按钮，验证 AutoDoor 源码、项目、编辑器、DPI、手机号池。
+2. 清理或归档旧测试脚本 `scripts/test_autobot.py`。
+3. 给 worker 补单元测试或快照测试，覆盖行为树补丁逻辑。
+
+---
+
+## 7. 下次会话建议入口
+
+新会话先读：
+
+1. `SESSION_STATE.md`
+2. `scripts/platform_worker.py`
+3. `desktop/src-tauri/src/lib.rs`
+4. `desktop/src/TaskPanel.tsx`
+5. `desktop/src/SettingsPage.tsx`
+
+推荐第一步命令：
+
+```powershell
+cd D:\FriendAuto
+git status --short
+python -m py_compile scripts\platform_worker.py
 cd desktop
-npm run tauri dev
-
-# 管理后台（端口 5173）
-cd admin
-npm run dev
+npm run build
+cd src-tauri
+cargo check
 ```
 
-### 测试账号
+真实联调前检查：
 
-- 邮箱：`test@friendauto.com`
-- 密码/验证码：`888888`
-- debug 模式下跳过密码验证和设备绑定
-
-### 常用操作
-
-- 重置数据库：删除 `server/friendauto.db`，重启后端自动重建
-- 脚本独立测试：`echo '{"run_id":"test","contacts":[]}' | python scripts/test_autobot.py`
-- 端口被占：`netstat -ano | findstr ':8001'`
-
-### 配置说明
-
-SMTP 配置在 `server/.env`（已在 .gitignore 中，不会提交）：
-```
-SMTP_HOST=smtp.qq.com
-SMTP_PORT=465
-SMTP_USER=your-email@qq.com
-SMTP_PASSWORD=your-auth-code
-SMTP_FROM_NAME=FriendAuto
+```powershell
+# 确认 AutoDoor 项目第一条手机号是 11 位
+python -c "import json; from pathlib import Path; raw=json.loads(Path(r'D:\AddFriend\Addfriend\tree.json').read_text(encoding='utf-8')); print(raw['nodes']['node_45']['config']['preset_texts'][0])"
 ```
 
 ---
 
-## 十一、脚本通信协议
+## 8. 风险与注意事项
 
-### 桌面端 → 脚本（stdin JSON）
-
-```json
-{
-  "run_id": "task_001",
-  "daily_limit": 20,
-  "create_tag": true,
-  "greeting_text": "你好，我是XXX",
-  "contacts": [
-    { "contact_id": 1001, "wechat_nickname": "张三", "wechat_id": "wxid_zhangsan" }
-  ]
-}
-```
-
-### 脚本 → 桌面端（stdout 逐行 JSON）
-
-```json
-{"run_id":"task_001", "event":"started", "message":"开始任务", "timestamp":"..."}
-{"run_id":"task_001", "contact_id":1001, "event":"success", "message":"张三 添加成功", "timestamp":"..."}
-{"run_id":"task_001", "event":"finished", "message":"任务完成", "timestamp":"..."}
-```
-
-### 事件与扣次
-
-| 事件 | 扣次 | 说明 |
-|------|:----:|------|
-| started | 否 | 脚本启动 |
-| progress | 否 | 处理中 |
-| success | **是** | 添加成功（无会员时扣） |
-| failed | 否 | 添加失败 |
-| invalid | 否 | 无效联系人 |
-| finished | 否 | 任务完成 |
-| error | 否 | 脚本异常 |
-| exited | 否 | 进程退出（Rust 发送） |
-
-幂等规则：`run_id + contact_id` 组合唯一，重复上报不扣次。
+- `D:\AddFriend\Addfriend` 是仓库外资源，FriendAuto 的 git push 不会包含它。
+- AutoDoor Dist 能点准但 FriendAuto 点偏时，优先排查 DPI 初始化、目标窗口 hwnd、同标题微信窗口、模板 `dpi_base`。
+- 不要在 worker 运行副本里盲目清空 `window_hwnd/window_pid`；这样可能和 AutoDoor Dist 行为不一致。
+- 如果同一台机器上存在多个“微信”窗口，标题匹配可能绑定错窗口；最稳的是在 AutoDoor 编辑器里重新选择目标窗口并保存行为树。
+- 只有 `success` 事件会扣试用次数，`failed/invalid/error` 不应扣次。

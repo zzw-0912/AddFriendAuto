@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   DEFAULT_TASK_DEFAULTS,
+  type AutoDoorConfig,
   type TaskDefaults,
   type UserStatus,
 } from "./types";
@@ -8,6 +10,12 @@ import { useSendCode } from "./useSendCode";
 import { readErrorDetail } from "./api";
 
 const APP_VERSION = "0.1.0";
+
+const DEFAULT_AUTODOOR_CONFIG: AutoDoorConfig = {
+  autodoorSourcePath: "D:\\AddFriend\\autodoor_behavior_tree",
+  projectPath: "D:\\AddFriend\\Addfriend",
+  editorExecutablePath: "D:\\AddFriend\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe",
+};
 
 interface DeviceInfo {
   id: number;
@@ -76,6 +84,9 @@ function SettingsPage({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [autoDoorConfig, setAutoDoorConfig] = useState<AutoDoorConfig>(DEFAULT_AUTODOOR_CONFIG);
+  const [autoDoorLoading, setAutoDoorLoading] = useState(true);
+  const [autoDoorSaving, setAutoDoorSaving] = useState(false);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -90,6 +101,26 @@ function SettingsPage({
   useEffect(() => {
     setDefaultsForm(taskDefaults);
   }, [taskDefaults]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAutoDoorLoading(true);
+
+    (async () => {
+      try {
+        const config = await invoke<AutoDoorConfig>("load_autodoor_config");
+        if (!cancelled) setAutoDoorConfig(config);
+      } catch {
+        if (!cancelled) showToast("自动化平台设置读取失败，已使用默认路径");
+      } finally {
+        if (!cancelled) setAutoDoorLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +171,29 @@ function SettingsPage({
     setDefaultsForm(DEFAULT_TASK_DEFAULTS);
     onTaskDefaultsChange(DEFAULT_TASK_DEFAULTS);
     showToast("已恢复默认任务设置");
+  };
+
+  const handleAutoDoorConfigSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAutoDoorSaving(true);
+    try {
+      const saved = await invoke<AutoDoorConfig>("save_autodoor_config", { config: autoDoorConfig });
+      setAutoDoorConfig(saved);
+      showToast("自动化平台设置已保存");
+    } catch (err) {
+      showToast(String(err || "自动化平台设置保存失败"));
+    } finally {
+      setAutoDoorSaving(false);
+    }
+  };
+
+  const handleOpenAutoDoorEditor = async () => {
+    try {
+      await invoke("open_autodoor_editor", { config: autoDoorConfig });
+      showToast("已打开 AutoDoor 编辑器");
+    } catch (err) {
+      showToast(String(err || "AutoDoor 编辑器启动失败"));
+    }
   };
 
   const handleCopyMachineCode = async () => {
@@ -313,6 +367,53 @@ function SettingsPage({
             </button>
             <button type="submit" className="settings-primary-btn">
               保存设置
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="profile-card settings-card">
+        <h4 className="profile-card-title">自动化平台设置</h4>
+        <p className="profile-card-desc">配置本机 AutoDoor 源码、加好友项目和调试编辑器路径</p>
+        <form className="settings-form" onSubmit={handleAutoDoorConfigSubmit}>
+          <div className="settings-path-grid">
+            <div className="field">
+              <label>AutoDoor 源码目录</label>
+              <input
+                className="input settings-path-input"
+                value={autoDoorConfig.autodoorSourcePath}
+                onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, autodoorSourcePath: e.target.value }))}
+                placeholder="D:\\AddFriend\\autodoor_behavior_tree"
+                disabled={autoDoorLoading}
+              />
+            </div>
+            <div className="field">
+              <label>加好友项目目录</label>
+              <input
+                className="input settings-path-input"
+                value={autoDoorConfig.projectPath}
+                onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, projectPath: e.target.value }))}
+                placeholder="D:\\AddFriend\\Addfriend"
+                disabled={autoDoorLoading}
+              />
+            </div>
+            <div className="field">
+              <label>编辑器路径（可选）</label>
+              <input
+                className="input settings-path-input"
+                value={autoDoorConfig.editorExecutablePath}
+                onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, editorExecutablePath: e.target.value }))}
+                placeholder="D:\\AddFriend\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe"
+                disabled={autoDoorLoading}
+              />
+            </div>
+          </div>
+          <div className="settings-form-actions">
+            <button type="button" className="settings-secondary-btn" onClick={handleOpenAutoDoorEditor} disabled={autoDoorLoading}>
+              打开编辑器
+            </button>
+            <button type="submit" className="settings-primary-btn" disabled={autoDoorLoading || autoDoorSaving}>
+              {autoDoorSaving ? "保存中..." : "保存平台设置"}
             </button>
           </div>
         </form>

@@ -40,6 +40,7 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   const [counters, setCounters] = useState({ success: 0, failed: 0, invalid: 0, total: 0 });
   const logEndRef = useRef<HTMLDivElement>(null);
   const taskIdRef = useRef<number | null>(null);
+  const isFinishingRef = useRef(false);
 
   const addLog = useCallback((text: string, type: LogEntry["type"] = "info") => {
     logId += 1;
@@ -62,7 +63,8 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
 
   const finishCurrentTask = useCallback(async () => {
     const tid = taskIdRef.current;
-    if (!tid) return;
+    if (!tid || isFinishingRef.current) return;
+    isFinishingRef.current = true;
     try {
       await fetch(`${apiBase}/tasks/${tid}/finish`, {
         method: "POST",
@@ -74,6 +76,7 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
     setTaskId(null);
     taskIdRef.current = null;
     setIsRunning(false);
+    isFinishingRef.current = false;
     onStatusChange();
   }, [addLog, apiBase, onStatusChange, token]);
 
@@ -82,8 +85,12 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
       const data: ScriptEvent = JSON.parse(event.payload);
 
       if (data.event === "exited") {
-        setIsRunning(false);
         addLog("脚本进程已退出", "info");
+        if (taskIdRef.current) {
+          finishCurrentTask();
+        } else {
+          setIsRunning(false);
+        }
         return;
       }
 
@@ -168,10 +175,12 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
 
       setTaskId(data.task_id);
       taskIdRef.current = data.task_id;
+      isFinishingRef.current = false;
       setIsRunning(true);
 
       const config = {
         run_id: String(data.task_id),
+        task_id: data.task_id,
         daily_limit: dailyLimit,
         create_tag: createTag,
         greeting_text: greetingText,

@@ -1750,6 +1750,17 @@
   align-items: end;
 }
 
+.settings-path-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.settings-path-input {
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
+}
+
 .settings-check-row {
   min-height: 42px;
   display: flex;
@@ -1821,7 +1832,8 @@
     width: 360px;
   }
   .settings-grid,
-  .settings-form-grid {
+  .settings-form-grid,
+  .settings-path-grid {
     grid-template-columns: 1fr;
   }
   .settings-info-list {
