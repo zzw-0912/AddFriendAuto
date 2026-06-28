@@ -22,6 +22,10 @@ interface Props {
   onLogout: () => void;
 }
 
+const TOP_NAV_ITEMS = [
+  { label: "首页", icon: "home" },
+];
+
 const BOTTOM_NAV_ITEMS = [
   { label: "客服", icon: "service" },
   { label: "反馈", icon: "feedback" },
@@ -225,6 +229,23 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
           </button>
 
           <nav className="sidebar-nav">
+            {TOP_NAV_ITEMS.map((item) => (
+              <a
+                key={item.label}
+                className={`nav-item${activeNav === item.label ? " active" : ""}`}
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setActiveNav(item.label === "首页" ? "" : item.label);
+                }}
+              >
+                <NavIcon name={item.icon} />
+                <span className="nav-text">{item.label}</span>
+              </a>
+            ))}
+
+            <div className="nav-spacer" />
+
             {BOTTOM_NAV_ITEMS.map((item) => (
               <a
                 key={item.label}
