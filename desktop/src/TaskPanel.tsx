@@ -41,6 +41,7 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   const logEndRef = useRef<HTMLDivElement>(null);
   const taskIdRef = useRef<number | null>(null);
   const isFinishingRef = useRef(false);
+  const processedResultKeysRef = useRef<Set<string>>(new Set());
 
   const addLog = useCallback((text: string, type: LogEntry["type"] = "info") => {
     logId += 1;
@@ -96,6 +97,11 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
 
       const msg = data.message || data.event;
       const ts = data.timestamp ? data.timestamp.split("T")[1]?.split("+")[0] || "" : "";
+      const resultKey = `${data.run_id || taskIdRef.current || ""}:${data.contact_id || ""}:${data.event}`;
+      const isResultEvent = data.event === "success" || data.event === "failed" || data.event === "invalid";
+      if (isResultEvent && processedResultKeysRef.current.has(resultKey)) {
+        return;
+      }
 
       switch (data.event) {
         case "started":
@@ -105,15 +111,18 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
           addLog(`[${ts}] ${msg}`, "normal");
           break;
         case "success":
+          processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ✅ ${msg}`, "success");
           setCounters((c) => ({ ...c, success: c.success + 1, total: c.total + 1 }));
           reportResult(data.contact_id, data.event, msg);
           break;
         case "failed":
+          processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ❌ ${msg}`, "failed");
           setCounters((c) => ({ ...c, failed: c.failed + 1, total: c.total + 1 }));
           break;
         case "invalid":
+          processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ⚠️ ${msg}`, "invalid");
           setCounters((c) => ({ ...c, invalid: c.invalid + 1, total: c.total + 1 }));
           break;
@@ -133,11 +142,18 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   }, [addLog, finishCurrentTask, reportResult]);
 
   useEffect(() => {
+    let cancelled = false;
     let unlistenFn: (() => void) | undefined;
     (async () => {
       unlistenFn = await listen<string>("script-event", handleScriptEvent);
+      if (cancelled) {
+        unlistenFn();
+      }
     })();
-    return () => { unlistenFn?.(); };
+    return () => {
+      cancelled = true;
+      unlistenFn?.();
+    };
   }, [handleScriptEvent]);
 
   useEffect(() => {
@@ -159,6 +175,7 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
 
     setLogs([]);
     setCounters({ success: 0, failed: 0, invalid: 0, total: 0 });
+    processedResultKeysRef.current.clear();
 
     try {
       addLog("正在校验会员状态...", "info");
