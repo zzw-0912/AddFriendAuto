@@ -33,6 +33,19 @@ GREETING_KEYWORDS = ["输入申请语", "申请语"]
 VALIDATION_KEYWORDS = ["判断是否输入正确", "输入正确"]
 CONFIRM_CLICK_KEYWORDS = ["点击确定", "确定"]
 KEY_FAILURE_KEYWORDS = ["发送添加好友申请", "添加到通讯录", "输入申请语"]
+BOOTSTRAP_MAX_ATTEMPTS = 2
+BOOTSTRAP_RETRY_MAX_SECONDS = 8.0
+BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
+
+
+@dataclass
+class RunOutcome:
+    phone_started: bool
+    total_finished: int
+    success_count: int
+    failed_count: int
+    invalid_count: int
+    elapsed_seconds: float
 
 
 @dataclass
@@ -541,7 +554,20 @@ def import_autodoor(config: AutoDoorConfig):
     return ExecutionContext, BehaviorTreeEngine, Serializer, LogManager, LogLevel, UIUpdateDispatcher
 
 
-def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dict[str, Any]) -> None:
+def should_retry_bootstrap(outcome: RunOutcome, attempt: int) -> bool:
+    return (
+        attempt < BOOTSTRAP_MAX_ATTEMPTS
+        and not outcome.phone_started
+        and outcome.total_finished == 0
+        and outcome.elapsed_seconds <= BOOTSTRAP_RETRY_MAX_SECONDS
+    )
+
+
+def run_autodoor_once(
+    deps: tuple[Any, Any, Any, Any, Any, Any],
+    prepared: PreparedRun,
+    task_config: dict[str, Any],
+) -> RunOutcome:
     (
         ExecutionContext,
         BehaviorTreeEngine,
@@ -549,7 +575,7 @@ def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dic
         LogManager,
         LogLevel,
         UIUpdateDispatcher,
-    ) = import_autodoor(config)
+    ) = deps
 
     root_node, _, _ = Serializer.load_from_file(str(prepared.tree_file))
     if not root_node:
@@ -559,6 +585,7 @@ def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dic
     node_meta = load_node_meta(prepared.tree_file)
     dispatcher = UIUpdateDispatcher()
     log_manager = LogManager.instance()
+    log_manager.flush()
 
     state = {
         "phone_index": -1,
@@ -639,11 +666,7 @@ def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dic
     engine = BehaviorTreeEngine(root_node)
     engine._on_status_change = handle_engine_status
 
-    emit(
-        "started",
-        f"AutoDoor 任务启动，共 {len(prepared.phone_numbers)} 个手机号",
-        run_id=run_id,
-    )
+    start_time = time.monotonic()
     engine.start(context)
 
     try:
@@ -658,10 +681,57 @@ def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dic
     total_finished = len(state["completed"]) + len(state["failed"]) + len(state["invalid"])
     if state["current_phone"] and total_finished == 0:
         mark_terminal("failed", "任务结束但未捕获到发送成功事件")
+        total_finished = len(state["completed"]) + len(state["failed"]) + len(state["invalid"])
+
+    return RunOutcome(
+        phone_started=state["phone_index"] >= 0,
+        total_finished=total_finished,
+        success_count=len(state["completed"]),
+        failed_count=len(state["failed"]),
+        invalid_count=len(state["invalid"]),
+        elapsed_seconds=time.monotonic() - start_time,
+    )
+
+
+def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dict[str, Any]) -> None:
+    deps = import_autodoor(config)
+    run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
+
+    emit(
+        "started",
+        f"AutoDoor 任务启动，共 {len(prepared.phone_numbers)} 个手机号",
+        run_id=run_id,
+    )
+
+    outcome: RunOutcome | None = None
+    for attempt in range(1, BOOTSTRAP_MAX_ATTEMPTS + 1):
+        if attempt > 1:
+            emit("progress", f"正在进行第 {attempt} 次启动尝试", run_id=run_id)
+
+        outcome = run_autodoor_once(deps, prepared, task_config)
+        if should_retry_bootstrap(outcome, attempt):
+            emit(
+                "progress",
+                "微信窗口首次启动尚未稳定，等待后自动重试一次",
+                run_id=run_id,
+            )
+            time.sleep(BOOTSTRAP_RETRY_DELAY_SECONDS)
+            continue
+        break
+
+    if outcome is None:
+        outcome = RunOutcome(False, 0, 0, 0, 0, 0)
+
+    if not outcome.phone_started and outcome.total_finished == 0:
+        emit(
+            "error",
+            "任务未进入手机号输入步骤，请确认微信已登录且“添加朋友”窗口可正常打开",
+            run_id=run_id,
+        )
 
     emit(
         "finished",
-        f"任务完成，成功 {len(state['completed'])} 个，失败 {len(state['failed'])} 个，无效 {len(state['invalid'])} 个",
+        f"任务完成，成功 {outcome.success_count} 个，失败 {outcome.failed_count} 个，无效 {outcome.invalid_count} 个",
         run_id=run_id,
     )
 

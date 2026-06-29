@@ -131,11 +131,13 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
           processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ❌ ${msg}`, "failed");
           setCounters((c) => ({ ...c, failed: c.failed + 1, total: c.total + 1 }));
+          reportResult(data.contact_id, data.event, msg);
           break;
         case "invalid":
           processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ⚠️ ${msg}`, "invalid");
           setCounters((c) => ({ ...c, invalid: c.invalid + 1, total: c.total + 1 }));
+          reportResult(data.contact_id, data.event, msg);
           break;
         case "error":
           addLog(`[${ts}] 🔴 ${msg}`, "error");
