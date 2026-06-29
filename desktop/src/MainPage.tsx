@@ -3,7 +3,6 @@ import PaymentModal from "./PaymentModal";
 import QRCodeModal from "./QRCodeModal";
 import FeedbackModal from "./FeedbackModal";
 import ProfilePage from "./ProfilePage";
-import SettingsPage from "./SettingsPage";
 import TaskCard from "./TaskCard";
 import OfflineBanner from "./OfflineBanner";
 import { useNetworkStatus } from "./useNetworkStatus";
@@ -31,7 +30,6 @@ const BOTTOM_NAV_ITEMS = [
   { label: "客服", icon: "service" },
   { label: "反馈", icon: "feedback" },
   { label: "我的", icon: "profile" },
-  { label: "设置", icon: "settings" },
 ];
 
 const HERO_SLIDES = [
@@ -89,8 +87,8 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
   const [activeNav, setActiveNav] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slidePaused, setSlidePaused] = useState(false);
-  const [taskDefaults, setTaskDefaults] = useState<TaskDefaults>(() => loadTaskDefaults());
-  const [taskDefaultsVersion, setTaskDefaultsVersion] = useState(0);
+  const [taskDefaults] = useState<TaskDefaults>(() => loadTaskDefaults());
+  const [taskDefaultsVersion] = useState(0);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -125,15 +123,6 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
   const planId = status?.membership.plan_id;
   const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
 
-  const handleTaskDefaultsChange = (defaults: TaskDefaults) => {
-    const nextDefaults = normalizeTaskDefaults(defaults);
-    setTaskDefaults(nextDefaults);
-    setTaskDefaultsVersion((version) => version + 1);
-    try {
-      localStorage.setItem(TASK_DEFAULTS_STORAGE_KEY, JSON.stringify(nextDefaults));
-    } catch {}
-  };
-
   const renderMainContent = () => {
     if (activeNav === "我的") {
       return (
@@ -141,7 +130,10 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
           apiBase={apiBase}
           token={auth.token}
           email={auth.email}
+          machineCode={machineCode}
+          status={status}
           onAuthExpired={onLogout}
+          onLogout={onLogout}
         />
       );
     }
@@ -182,24 +174,6 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
             <p>如未按以上建议操作，导致微信号被限制或被封禁，本平台概不负责。请合理使用，遵守微信平台规则。</p>
           </div>
         </div>
-      );
-    }
-
-    if (activeNav === "设置") {
-      return (
-        <SettingsPage
-          apiBase={apiBase}
-          token={auth.token}
-          email={auth.email}
-          machineCode={machineCode}
-          status={status}
-          taskDefaults={taskDefaults}
-          onTaskDefaultsChange={handleTaskDefaultsChange}
-          onOpenPayment={() => setShowPayment(true)}
-          onOpenSupport={() => setShowQR(true)}
-          onOpenFeedback={() => setShowFeedback(true)}
-          onLogout={onLogout}
-        />
       );
     }
 
@@ -431,13 +405,6 @@ function NavIcon({ name }: { name: string }) {
           <rect x="5" y="3" width="14" height="18" rx="2.5" />
           <circle cx="12" cy="10" r="3.2" />
           <path d="M8.5 17.2c.9-1.7 2.1-2.5 3.5-2.5s2.6.8 3.5 2.5" />
-        </svg>
-      );
-    case "settings":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
         </svg>
       );
     case "tutorial":
