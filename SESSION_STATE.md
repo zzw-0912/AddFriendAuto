@@ -55,7 +55,7 @@ Tauri v2 + React 桌面端
 | AutoDoor 配置持久化 | `%APPDATA%\FriendAuto\autodoor.json` |
 | 运行副本 | 每次任务复制 AutoDoor 项目到 `%APPDATA%\FriendAuto\runs\<run_id>\Addfriend`，只修改副本 |
 | DPI | worker 必须调用 AutoDoor 的 `initialize_dpi_awareness()`，否则 FriendAuto 启动时点击位置会偏 |
-| 窗口绑定 | 不在 worker 里盲目清空 `window_hwnd/window_pid`；尽量保持与 AutoDoor Dist 行为一致 |
+| 窗口绑定 | worker 只在运行副本里清空可达 `StartNode` 的 `window_hwnd/window_pid`，保留 `window_title`，每次按当前窗口标题重新绑定 |
 | 手机号来源 | 当前仍从 AutoDoor 行为树“输入手机号”节点的 `preset_texts` 读取 |
 | 多人执行 | `daily_limit=N` 会截取 N 条号码，并把根节点 `repeat_count` 设为 `N - 1` |
 | 扣次规则 | 只有 worker 输出 `event=success` 时，后端才扣试用次数 |
@@ -94,6 +94,7 @@ AutoDoor 集成：
   - 写入打招呼语。
   - 根据 `create_tag=false` 跳过标签/备注流。
   - 设置根节点重复次数为 `手机号数量 - 1`。
+  - 清空运行副本中可达窗口绑定节点的历史 `window_hwnd/window_pid`，保留窗口标题，避免使用旧窗口句柄导致点击坐标偏移。
   - 调用 AutoDoor DPI 初始化，修正 FriendAuto 启动时坐标偏差。
   - 监听关键节点状态，把 AutoDoor 成功/失败/无效转换为 FriendAuto 事件。
 - Rust 启动 worker 时设置 `PYTHONIOENCODING=utf-8` 和 `PYTHONUTF8=1`，避免中文/emoji 在 Windows GBK 环境下输出失败。
@@ -109,7 +110,7 @@ AutoDoor 集成：
 
 | 文件 | 作用 | 关键修改 |
 |---|---|---|
-| `scripts/platform_worker.py` | FriendAuto 到 AutoDoor 的桥接 worker | 新增运行副本、行为树补丁、手机号校验、DPI 初始化、AutoDoor 事件转 FriendAuto 事件 |
+| `scripts/platform_worker.py` | FriendAuto 到 AutoDoor 的桥接 worker | 新增运行副本、行为树补丁、手机号校验、窗口句柄清理、DPI 初始化、AutoDoor 事件转 FriendAuto 事件 |
 | `desktop/src-tauri/src/lib.rs` | Tauri Rust 命令层 | 新增 AutoDoor 配置读写、打开编辑器、启动 worker、stderr 转错误事件、UTF-8 环境变量 |
 | `desktop/src/SettingsPage.tsx` | 桌面端设置页 | 新增自动化平台路径配置表单和打开编辑器按钮 |
 | `desktop/src/types.ts` | 前端共享类型 | 新增 `AutoDoorConfig` |

@@ -300,6 +300,17 @@ def patch_single_account(tree_data: dict[str, Any]) -> int:
     return max(0, len(wechat_starts) - 1)
 
 
+def clear_start_window_handles(nodes: dict[str, dict[str, Any]], node_ids: list[str]) -> None:
+    for node_id in node_ids:
+        node = nodes[node_id]
+        if node_type(node) != "StartNode":
+            continue
+        config = get_config(node)
+        if config.get("bind_window") or config.get("window_title"):
+            config.pop("window_hwnd", None)
+            config.pop("window_pid", None)
+
+
 def patch_greeting(tree_data: dict[str, Any], node_ids: list[str], greeting_text: str) -> set[str]:
     nodes = tree_data.get("nodes", {})
     greeting_ids: set[str] = set()
@@ -382,8 +393,12 @@ def patch_tree(tree_file: Path, daily_limit: int, create_tag: bool, greeting_tex
         config = get_config(nodes[node_id])
         config["input_mode"] = "预设文本"
         config["preset_texts"] = phone_numbers
+        config["execution_mode"] = "顺序"
+        config.pop("file_path", None)
         config["save_input_text"] = True
         config["output_key"] = "last_input_text"
+
+    clear_start_window_handles(nodes, active_ids)
 
     root_id = tree_data.get("root_node")
     if root_id in nodes:
