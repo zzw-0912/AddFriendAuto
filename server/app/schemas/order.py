@@ -1,11 +1,12 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CreateOrderRequest(BaseModel):
-    plan_id: int
-    payment_channel: str = "wechat"
+    plan_id: int = Field(ge=1)
+    payment_channel: Literal["manual_wechat", "wechat", "alipay"] = "manual_wechat"
 
 
 class OrderResponse(BaseModel):

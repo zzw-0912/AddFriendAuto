@@ -1,11 +1,12 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AdminLoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class AdminInfo(BaseModel):
@@ -62,26 +63,26 @@ class UserDetailResponse(BaseModel):
 
 
 class UpdateMembershipRequest(BaseModel):
-    action: str
-    days: int | None = None
+    action: Literal["extend", "freeze", "unfreeze"]
+    days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class UpdateDeviceRequest(BaseModel):
-    status: str | None = None
-    remark: str | None = None
+    status: Literal["active", "inactive", "blocked"] | None = None
+    remark: str | None = Field(default=None, max_length=500)
     unbind: bool = False
 
 
 class UpdatePlanRequest(BaseModel):
-    name: str | None = None
-    duration_days: int | None = None
-    price_cents: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=50)
+    duration_days: int | None = Field(default=None, ge=1, le=3650)
+    price_cents: int | None = Field(default=None, ge=0, le=10_000_000)
     enabled: bool | None = None
 
 
 class ConfirmOrderPaymentRequest(BaseModel):
-    channel: str | None = "manual_wechat"
-    remark: str | None = None
+    channel: Literal["manual_wechat", "wechat", "alipay"] | None = "manual_wechat"
+    remark: str | None = Field(default=None, max_length=500)
 
 
 class AdminPlanResponse(BaseModel):

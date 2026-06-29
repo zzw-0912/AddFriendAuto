@@ -1,14 +1,15 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.status import MembershipInfo, TrialInfo
 
 
 class StartCheckRequest(BaseModel):
-    daily_limit: int = 20
+    daily_limit: int = Field(default=20, ge=1, le=200)
     create_tag: bool = False
-    greeting_text: str | None = None
+    greeting_text: str | None = Field(default=None, max_length=500)
 
 
 class StartCheckResponse(BaseModel):
@@ -20,9 +21,9 @@ class StartCheckResponse(BaseModel):
 
 
 class ResultRequest(BaseModel):
-    contact_id: int
-    event: str
-    message: str = ""
+    contact_id: int = Field(ge=1)
+    event: Literal["success", "failed", "invalid", "error"]
+    message: str = Field(default="", max_length=1000)
 
 
 class TaskResponse(BaseModel):
