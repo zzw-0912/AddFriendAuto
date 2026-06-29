@@ -111,6 +111,13 @@ export async function getOrders(page = 1, pageSize = 20, status?: string) {
   return request(path);
 }
 
+export async function confirmOrderPayment(orderId: number, data: { channel?: string; remark?: string } = {}) {
+  return request(`/admin/orders/${orderId}/confirm-payment`, {
+    method: "POST",
+    body: JSON.stringify({ channel: "manual_wechat", ...data }),
+  });
+}
+
 export async function getTasks(page = 1, pageSize = 20, status?: string) {
   let path = `/admin/tasks?page=${page}&page_size=${pageSize}`;
   if (status) path += `&status=${status}`;

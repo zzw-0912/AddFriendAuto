@@ -1260,7 +1260,7 @@
   color: #fff;
   font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   border-radius: var(--radius-sm);
   border: none;
   cursor: pointer;
@@ -1298,6 +1298,13 @@
 
 .skip-link:hover {
   text-decoration: underline;
+}
+
+.pay-error {
+  margin-top: 12px;
+  color: #b42318;
+  font-size: 13px;
+  text-align: left;
 }
 
 /* ─── QR Modal ────────────────────────────────────── */
@@ -1353,6 +1360,41 @@
   font-size: 14px;
   color: var(--text-muted);
   margin-bottom: 20px;
+}
+
+.qr-order-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg) 70%, var(--panel));
+  text-align: left;
+}
+
+.qr-order-card div {
+  min-width: 0;
+}
+
+.qr-order-card span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.qr-order-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.qr-order-card .mono {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 .qr-row {

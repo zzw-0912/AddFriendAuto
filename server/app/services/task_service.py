@@ -23,8 +23,9 @@ def start_check(user: User, daily_limit: int, create_tag: bool, greeting_text: s
         .filter(
             Membership.user_id == user.id,
             Membership.status == "active",
-            Membership.ends_at > datetime.now(timezone.utc),
+            Membership.ends_at > datetime.utcnow(),
         )
+        .order_by(Membership.ends_at.desc())
         .first()
     )
     if active_membership:
@@ -96,8 +97,9 @@ def report_result(task_id: int, contact_id: int, event: str, message: str, user:
                 .filter(
                     Membership.user_id == user.id,
                     Membership.status == "active",
-                    Membership.ends_at > datetime.now(timezone.utc),
+                    Membership.ends_at > datetime.utcnow(),
                 )
+                .order_by(Membership.ends_at.desc())
                 .first()
             )
             if not active_membership:

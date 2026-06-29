@@ -2,9 +2,15 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   qrImages?: (string | undefined)[];
+  orderInfo?: {
+    orderNo: string;
+    planName: string;
+    amountYuan: number;
+    userEmail: string;
+  } | null;
 }
 
-function QRCodeModal({ visible, onClose, qrImages = [undefined, undefined] }: Props) {
+function QRCodeModal({ visible, onClose, qrImages = [undefined, undefined], orderInfo = null }: Props) {
   return (
     <div className={`modal-overlay qr-overlay${visible ? " show" : ""}`} onClick={onClose}>
       <div className="modal-box qr-modal-box" onClick={(e) => e.stopPropagation()}>
@@ -15,6 +21,26 @@ function QRCodeModal({ visible, onClose, qrImages = [undefined, undefined] }: Pr
         </div>
         <h3>扫码添加工作人员</h3>
         <p className="modal-sub">添加好友后，工作人员将为您开通会员</p>
+        {orderInfo && (
+          <div className="qr-order-card">
+            <div>
+              <span>订单号</span>
+              <strong className="mono">{orderInfo.orderNo}</strong>
+            </div>
+            <div>
+              <span>套餐</span>
+              <strong>{orderInfo.planName}</strong>
+            </div>
+            <div>
+              <span>金额</span>
+              <strong>¥{orderInfo.amountYuan.toFixed(2)}</strong>
+            </div>
+            <div>
+              <span>账号</span>
+              <strong>{orderInfo.userEmail}</strong>
+            </div>
+          </div>
+        )}
         <div className="qr-row">
           {qrImages.map((src, i) => (
             <div key={i} className="qr-item">

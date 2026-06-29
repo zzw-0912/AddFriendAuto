@@ -358,6 +358,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
             <PaymentModal
               apiBase={apiBase}
               token={auth.token}
+              userEmail={auth.email}
               trialRemaining={status?.trial.remaining ?? 0}
               onClose={() => setShowPayment(false)}
               onSkipTrial={() => setShowPayment(false)}

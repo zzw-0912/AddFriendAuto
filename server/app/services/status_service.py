@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -16,8 +16,9 @@ def get_user_status(user: User, db: Session) -> UserStatusResponse:
         .filter(
             Membership.user_id == user.id,
             Membership.status == "active",
-            Membership.ends_at > datetime.now(timezone.utc),
+            Membership.ends_at > datetime.utcnow(),
         )
+        .order_by(Membership.ends_at.desc())
         .first()
     )
     if active_membership:

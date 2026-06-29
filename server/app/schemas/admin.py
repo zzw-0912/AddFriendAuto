@@ -79,6 +79,11 @@ class UpdatePlanRequest(BaseModel):
     enabled: bool | None = None
 
 
+class ConfirmOrderPaymentRequest(BaseModel):
+    channel: str | None = "manual_wechat"
+    remark: str | None = None
+
+
 class AdminPlanResponse(BaseModel):
     id: int
     name: str

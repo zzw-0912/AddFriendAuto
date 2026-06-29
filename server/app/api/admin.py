@@ -8,6 +8,7 @@ from app.schemas.admin import (
     AdminLoginRequest,
     AdminTokenResponse,
     AuditLogItem,
+    ConfirmOrderPaymentRequest,
     OrderListItem,
     TaskListItem,
     TaskResultItem,
@@ -19,6 +20,7 @@ from app.schemas.admin import (
 )
 from app.services.admin_service import (
     admin_login,
+    confirm_order_payment,
     list_audit_logs,
     list_contacts,
     list_devices,
@@ -129,6 +131,16 @@ def get_orders(
     db: Session = Depends(get_db),
 ):
     return list_orders(page, page_size, status, db)
+
+
+@router.post("/orders/{order_id}/confirm-payment")
+def post_confirm_order_payment(
+    order_id: int,
+    req: ConfirmOrderPaymentRequest,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return confirm_order_payment(order_id, req.channel, req.remark, admin.id, db)
 
 
 @router.get("/tasks")

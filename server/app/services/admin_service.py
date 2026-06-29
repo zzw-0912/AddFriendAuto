@@ -31,6 +31,7 @@ from app.schemas.admin import (
     UserDetailTrial,
     UserListItem,
 )
+from app.services.payment_service import process_order_payment
 
 
 def admin_login(username: str, password: str, db: Session) -> dict:
@@ -330,6 +331,34 @@ def list_orders(page: int, page_size: int, status_filter: str | None, db: Sessio
     ) for o in orders]
 
     return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+def confirm_order_payment(order_id: int, channel: str | None, remark: str | None,
+                          admin_user_id: int, db: Session) -> dict:
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    payment_channel = channel or order.payment_channel or "manual_wechat"
+    result = process_order_payment(order, payment_channel, db)
+    detail_parts = [
+        f"Confirmed order {order.order_no}",
+        f"user_id={order.user_id}",
+        f"amount_cents={order.amount_cents}",
+        f"channel={payment_channel}",
+        f"result={result.get('message')}",
+    ]
+    if remark:
+        detail_parts.append(f"remark={remark}")
+    create_audit_log(
+        admin_user_id,
+        "confirm_order_payment",
+        "order",
+        order.id,
+        "; ".join(detail_parts),
+        db,
+    )
+    return result
 
 
 def list_tasks(page: int, page_size: int, status_filter: str | None, db: Session) -> dict:
