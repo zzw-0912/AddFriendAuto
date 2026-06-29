@@ -24,6 +24,7 @@ interface Props {
 
 const TOP_NAV_ITEMS = [
   { label: "首页", icon: "home" },
+  { label: "用户教程", icon: "tutorial" },
 ];
 
 const BOTTOM_NAV_ITEMS = [
@@ -133,6 +134,42 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
           email={auth.email}
           onAuthExpired={onLogout}
         />
+      );
+    }
+
+    if (activeNav === "用户教程") {
+      return (
+        <div className="tutorial-page">
+          <h2 className="tutorial-heading">用户教程</h2>
+          <p className="tutorial-intro">不同注册时间的微信号每日添加好友上限不同，请按照以下建议操作，超出限制可能导致账号异常。</p>
+          <div className="tutorial-cards">
+            <div className="tutorial-card">
+              <div className="tutorial-card-num">20</div>
+              <div className="tutorial-card-body">
+                <strong>新注册微信号</strong>
+                <span>建议每天最多添加 20 人</span>
+              </div>
+            </div>
+            <div className="tutorial-card">
+              <div className="tutorial-card-num">50</div>
+              <div className="tutorial-card-body">
+                <strong>注册 2 年以上</strong>
+                <span>建议每天最多添加 50 人</span>
+              </div>
+            </div>
+            <div className="tutorial-card">
+              <div className="tutorial-card-num">80</div>
+              <div className="tutorial-card-body">
+                <strong>注册 5 年以上</strong>
+                <span>建议每天最多添加 80 人</span>
+              </div>
+            </div>
+          </div>
+          <div className="tutorial-warning">
+            <strong>⚠️ 温馨提示</strong>
+            <p>如未按以上建议操作，导致微信号被限制或被封禁，本平台概不负责。请合理使用，遵守微信平台规则。</p>
+          </div>
+        </div>
       );
     }
 
@@ -388,6 +425,14 @@ function NavIcon({ name }: { name: string }) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+        </svg>
+      );
+    case "tutorial":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          <path d="M8 7h8M8 11h6" />
         </svg>
       );
     default:
