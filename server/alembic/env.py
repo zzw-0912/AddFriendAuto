@@ -14,6 +14,7 @@ from app.models.trial_quota import TrialQuota
 from app.models.task import Task
 from app.models.task_result import TaskResult
 from app.models.contact import Contact
+from app.models.feedback import Feedback
 from app.models.admin_user import AdminUser
 from app.models.admin_audit_log import AdminAuditLog
 
