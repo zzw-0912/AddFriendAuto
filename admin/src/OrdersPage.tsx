@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { confirmOrderPayment, getOrders } from "./api";
+import type { OrderListItem, PageResponse } from "./api";
 
 function OrdersPage() {
-  const [data, setData] = useState<{ items: any[]; total: number } | null>(null);
+  const [data, setData] = useState<PageResponse<OrderListItem> | null>(null);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
@@ -21,7 +22,7 @@ function OrdersPage() {
     load();
   }, [load]);
 
-  const handleConfirmPayment = async (order: any) => {
+  const handleConfirmPayment = async (order: OrderListItem) => {
     if (!window.confirm(`确认已收到订单 ${order.order_no} 的线下付款？`)) return;
     setMsg("");
     setConfirmingId(order.id);
@@ -70,7 +71,7 @@ function OrdersPage() {
           </tr>
         </thead>
         <tbody>
-          {data?.items.map((o: any) => (
+          {data?.items.map((o) => (
             <tr key={o.id}>
               <td>{o.id}</td>
               <td className="mono">{o.order_no}</td>

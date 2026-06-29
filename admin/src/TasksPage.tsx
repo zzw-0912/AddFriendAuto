@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { getTasks, getTaskResults } from "./api";
+import type { PageResponse, TaskListItem, TaskResultItem } from "./api";
 
 function TasksPage() {
-  const [data, setData] = useState<{ items: any[]; total: number } | null>(null);
+  const [data, setData] = useState<PageResponse<TaskListItem> | null>(null);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
-  const [results, setResults] = useState<any[] | null>(null);
+  const [results, setResults] = useState<TaskResultItem[] | null>(null);
   const [resultsTaskId, setResultsTaskId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ function TasksPage() {
               </tr>
             </thead>
             <tbody>
-              {data?.items.map((t: any) => (
+              {data?.items.map((t) => (
                 <tr key={t.id}>
                   <td>{t.id}</td>
                   <td>{t.email || `#${t.user_id}`}</td>
@@ -100,7 +101,7 @@ function TasksPage() {
               <tbody>
                 {results.length === 0 ? (
                   <tr><td colSpan={6}>暂无结果</td></tr>
-                ) : results.map((r: any) => (
+                ) : results.map((r) => (
                   <tr key={r.id}>
                     <td>{r.id}</td>
                     <td>{r.contact_id ?? "-"}</td>

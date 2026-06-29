@@ -1,17 +1,9 @@
 import { useEffect, useState } from "react";
 import { getFeedback, resolveAssetUrl } from "./api";
-
-interface FeedbackItem {
-  id: number;
-  user_id: number;
-  email?: string | null;
-  content?: string;
-  images?: string[] | null;
-  created_at?: string;
-}
+import type { FeedbackItem, PageResponse } from "./api";
 
 function FeedbackPage() {
-  const [data, setData] = useState<{ items: FeedbackItem[]; total: number } | null>(null);
+  const [data, setData] = useState<PageResponse<FeedbackItem> | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { getPlans, updatePlan } from "./api";
+import type { PlanItem } from "./api";
 
 function PlansPage() {
-  const [plans, setPlans] = useState<any[]>([]);
+  const [plans, setPlans] = useState<PlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
 
@@ -13,7 +14,7 @@ function PlansPage() {
 
   useEffect(() => { load(); }, []);
 
-  const handleSave = async (planId: number, field: string, value: any) => {
+  const handleSave = async (planId: number, field: keyof Pick<PlanItem, "name" | "duration_days" | "price_cents" | "enabled">, value: string | number | boolean) => {
     setMsg("");
     try {
       await updatePlan(planId, { [field]: value });
@@ -42,7 +43,7 @@ function PlansPage() {
           </tr>
         </thead>
         <tbody>
-          {plans.map((p: any) => (
+          {plans.map((p) => (
             <tr key={p.id}>
               <td>{p.id}</td>
               <td>

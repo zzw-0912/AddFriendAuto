@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { getDevices, updateDevice, rebindDevice } from "./api";
+import type { DeviceListItem, PageResponse } from "./api";
 
 function DevicesPage() {
-  const [data, setData] = useState<{ items: any[]; total: number } | null>(null);
+  const [data, setData] = useState<PageResponse<DeviceListItem> | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
@@ -58,7 +59,7 @@ function DevicesPage() {
           </tr>
         </thead>
         <tbody>
-          {data?.items.map((d: any) => (
+          {data?.items.map((d) => (
             <tr key={d.id}>
               <td>{d.id}</td>
               <td>{d.email || `#${d.user_id}`}</td>

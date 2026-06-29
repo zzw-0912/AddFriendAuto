@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { getAuditLogs } from "./api";
+import type { AuditLogItem, PageResponse } from "./api";
 
 function AuditLogsPage() {
-  const [data, setData] = useState<{ items: any[]; total: number } | null>(null);
+  const [data, setData] = useState<PageResponse<AuditLogItem> | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +33,7 @@ function AuditLogsPage() {
           </tr>
         </thead>
         <tbody>
-          {data?.items.map((l: any) => (
+          {data?.items.map((l) => (
             <tr key={l.id}>
               <td>{l.id}</td>
               <td>{l.admin_username || `#${l.admin_user_id}`}</td>

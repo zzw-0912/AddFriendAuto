@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getUserDetail, updateMembership } from "./api";
+import type { UserDetail } from "./api";
 
 interface Props {
   userId: number;
@@ -7,7 +8,7 @@ interface Props {
 }
 
 function UserDetailPage({ userId, onBack }: Props) {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [extendDays, setExtendDays] = useState(30);
   const [msg, setMsg] = useState("");
@@ -77,7 +78,7 @@ function UserDetailPage({ userId, onBack }: Props) {
         <div className="detail-section">
           <h3>设备信息 ({user.devices.length} 台)</h3>
           <div className="detail-list">
-            {user.devices.map((d: any) => (
+            {user.devices.map((d) => (
               <div key={d.id} className="detail-card">
                 <div className="detail-grid">
                   <div><label>设备 ID</label><span>{d.id}</span></div>

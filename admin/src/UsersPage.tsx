@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { getUsers } from "./api";
+import type { PageResponse, UserListItem } from "./api";
 
 interface Props {
   onViewDetail: (id: number) => void;
 }
 
 function UsersPage({ onViewDetail }: Props) {
-  const [data, setData] = useState<{ items: any[]; total: number } | null>(null);
+  const [data, setData] = useState<PageResponse<UserListItem> | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +36,7 @@ function UsersPage({ onViewDetail }: Props) {
           </tr>
         </thead>
         <tbody>
-          {data?.items.map((u: any) => (
+          {data?.items.map((u) => (
             <tr key={u.id}>
               <td>{u.id}</td>
               <td>{u.email}</td>
