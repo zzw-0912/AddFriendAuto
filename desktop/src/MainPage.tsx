@@ -70,6 +70,15 @@ function loadTaskDefaults(): TaskDefaults {
   }
 }
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 6) return "凌晨好";
+  if (hour < 12) return "早上好";
+  if (hour < 14) return "中午好";
+  if (hour < 18) return "下午好";
+  return "晚上好";
+}
+
 function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
   const { isOffline } = useNetworkStatus();
   const [status, setStatus] = useState<UserStatus | null>(null);
@@ -320,7 +329,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
         {/* Content */}
         <main className="content">
           <div className="content-header">
-            <div className="greeting">下午好，欢迎回来</div>
+            <div className="greeting">{getGreeting()}，欢迎回来</div>
             <div className="status-bar">
               <button className="recharge-btn" onClick={() => setShowPayment(true)}>充值会员</button>
               {status?.membership.is_active && (
