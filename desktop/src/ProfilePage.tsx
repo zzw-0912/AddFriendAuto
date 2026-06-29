@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { readErrorDetail } from "./api";
+import { readErrorDetail, getSavedAccounts, saveAccount, removeAccount } from "./api";
+import type { StoredAccount } from "./api";
 import { useSendCode } from "./useSendCode";
 import type { UserStatus } from "./types";
 
@@ -11,6 +12,7 @@ interface Props {
   status: UserStatus | null;
   onAuthExpired: () => void;
   onLogout: () => void;
+  onSwitchAccount: (token: string, email: string) => void;
 }
 
 interface Profile {
@@ -68,6 +70,7 @@ function ProfilePage({
   status,
   onAuthExpired,
   onLogout,
+  onSwitchAccount,
 }: Props) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<LoadError | null>(null);
@@ -82,6 +85,8 @@ function ProfilePage({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<StoredAccount[]>([]);
 
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -372,6 +377,16 @@ function ProfilePage({
             复制
           </button>
         </div>
+        <div className="settings-machine-box" style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className="settings-danger-btn"
+            style={{ width: "100%", textAlign: "center" }}
+            onClick={() => { setSavedAccounts(getSavedAccounts()); setShowAccountSwitcher(true); }}
+          >
+            切换账号
+          </button>
+        </div>
       </div>
 
       {/* Password Reset Card */}
@@ -432,6 +447,66 @@ function ProfilePage({
           </div>
         </form>
       </div>
+
+      {showAccountSwitcher && (
+        <div className="modal-overlay" onClick={() => setShowAccountSwitcher(false)}>
+          <div className="account-switcher" onClick={(e) => e.stopPropagation()}>
+            <div className="account-switcher-header">
+              <h3>切换账号</h3>
+              <button className="account-switcher-close" onClick={() => setShowAccountSwitcher(false)}>✕</button>
+            </div>
+            <div className="account-switcher-body">
+              <div className="account-switcher-current">
+                <div className="account-switcher-avatar">{email.charAt(0).toUpperCase()}</div>
+                <div className="account-switcher-info">
+                  <span className="account-switcher-email">{email}</span>
+                  <span className="account-switcher-tag">当前账号</span>
+                </div>
+              </div>
+              {savedAccounts.filter((a) => a.email !== email).length > 0 && (
+                <>
+                  <div className="account-switcher-divider" />
+                  <div className="account-switcher-label">其他账号</div>
+                  <div className="account-switcher-list">
+                    {savedAccounts.filter((a) => a.email !== email).map((account) => (
+                      <div
+                        key={account.email}
+                        className="account-switcher-item"
+                        onClick={() => { onSwitchAccount(account.token, account.email); setShowAccountSwitcher(false); }}
+                      >
+                        <div className="account-switcher-avatar">{account.email.charAt(0).toUpperCase()}</div>
+                        <span className="account-switcher-email">{account.email}</span>
+                        <button
+                          className="account-switcher-remove"
+                          onClick={(e) => { e.stopPropagation(); removeAccount(account.email); setSavedAccounts(getSavedAccounts()); }}
+                        >
+                          移除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="account-switcher-footer">
+              <button
+                className="settings-primary-btn"
+                style={{ flex: 1 }}
+                onClick={() => { saveAccount(email, token); onLogout(); }}
+              >
+                添加新账号
+              </button>
+              <button
+                className="settings-danger-btn"
+                style={{ flex: 1 }}
+                onClick={() => { removeAccount(email); onLogout(); }}
+              >
+                退出当前账号
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

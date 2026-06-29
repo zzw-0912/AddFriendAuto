@@ -61,3 +61,29 @@ export async function apiPost<T>(apiBase: string, path: string, body?: unknown, 
 
   return res.json() as Promise<T>;
 }
+
+const ACCOUNTS_KEY = "friendauto.accounts";
+
+export interface StoredAccount {
+  email: string;
+  token: string;
+}
+
+export function getSavedAccounts(): StoredAccount[] {
+  try {
+    return JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveAccount(email: string, token: string) {
+  const accounts = getSavedAccounts().filter((a) => a.email !== email);
+  accounts.unshift({ email, token });
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts.slice(0, 5)));
+}
+
+export function removeAccount(email: string) {
+  const accounts = getSavedAccounts().filter((a) => a.email !== email);
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+}

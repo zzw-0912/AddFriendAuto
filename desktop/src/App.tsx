@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import LoginPage from "./LoginPage";
 import MainPage from "./MainPage";
+import { saveAccount } from "./api";
 import "./App.css";
 
 const API_BASE = "http://127.0.0.1:8001";
@@ -47,6 +48,13 @@ function App() {
     const authData = { token, email };
     setAuth(authData);
     invoke("save_token", { token, email });
+    saveAccount(email, token);
+  };
+
+  const handleSwitchAccount = (token: string, email: string) => {
+    const authData = { token, email };
+    setAuth(authData);
+    invoke("save_token", { token, email });
   };
 
   const handleLogout = () => {
@@ -62,7 +70,7 @@ function App() {
     return <LoginPage apiBase={API_BASE} machineCode={machineCode} onLogin={handleLogin} />;
   }
 
-  return <MainPage apiBase={API_BASE} auth={auth} machineCode={machineCode} onLogout={handleLogout} />;
+  return <MainPage apiBase={API_BASE} auth={auth} machineCode={machineCode} onLogout={handleLogout} onSwitchAccount={handleSwitchAccount} />;
 }
 
 export default App;

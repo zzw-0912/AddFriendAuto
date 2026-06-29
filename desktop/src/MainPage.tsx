@@ -19,6 +19,7 @@ interface Props {
   auth: { token: string; email: string };
   machineCode: string;
   onLogout: () => void;
+  onSwitchAccount: (token: string, email: string) => void;
 }
 
 const TOP_NAV_ITEMS = [
@@ -77,7 +78,7 @@ function getGreeting() {
   return "晚上好";
 }
 
-function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
+function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Props) {
   const { isOffline } = useNetworkStatus();
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
@@ -134,6 +135,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
           status={status}
           onAuthExpired={onLogout}
           onLogout={onLogout}
+          onSwitchAccount={onSwitchAccount}
         />
       );
     }
