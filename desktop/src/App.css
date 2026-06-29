@@ -20,8 +20,8 @@
   --radius-md: 18px;
   --radius-sm: 14px;
   --radius-pill: 999px;
-  --sidebar-width: 276px;
-  --sidebar-collapsed: 88px;
+  --sidebar-width: 220px;
+  --sidebar-collapsed: 68px;
   --window-width: min(1370px, calc(100vw - 56px));
   --window-height: min(1032px, calc(100vh - 42px));
 }

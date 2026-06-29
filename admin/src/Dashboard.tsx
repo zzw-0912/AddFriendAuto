@@ -34,6 +34,46 @@ function Dashboard() {
           </div>
         ))}
       </div>
+      <div className="tutorial-section">
+        <h3 className="tutorial-title">用户教程</h3>
+        <div className="tutorial-list">
+          <div className="tutorial-item">
+            <div className="tutorial-step">1</div>
+            <div className="tutorial-body">
+              <strong>下载客户端并登录</strong>
+              <p>用户通过桌面端应用输入邮箱验证码即可完成登录。</p>
+            </div>
+          </div>
+          <div className="tutorial-item">
+            <div className="tutorial-step">2</div>
+            <div className="tutorial-body">
+              <strong>添加好友任务</strong>
+              <p>在任务面板配置添加好友的数量与间隔，系统自动执行。</p>
+            </div>
+          </div>
+          <div className="tutorial-item">
+            <div className="tutorial-step">3</div>
+            <div className="tutorial-body">
+              <strong>管理设备</strong>
+              <p>每个微信号需绑定一台设备运行，可在设备页面管理。</p>
+            </div>
+          </div>
+          <div className="tutorial-item">
+            <div className="tutorial-step">4</div>
+            <div className="tutorial-body">
+              <strong>升级会员</strong>
+              <p>购买套餐解锁更多任务配额，支持多种支付方式。</p>
+            </div>
+          </div>
+          <div className="tutorial-item">
+            <div className="tutorial-step">5</div>
+            <div className="tutorial-body">
+              <strong>提交反馈</strong>
+              <p>如遇问题可在客户端「反馈」入口提交文字描述与截图。</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
