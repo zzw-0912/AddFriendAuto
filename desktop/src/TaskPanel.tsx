@@ -29,6 +29,15 @@ interface LogEntry {
 
 let logId = 0;
 
+const BOOT_STEPS = [
+  "建立加密数据传输信道",
+  "同步本地联系人节点数据库",
+  "演算全域风控监测矩阵阈值",
+  "解析用户存量链路容量上限",
+  "分配交互行为缓冲算力池",
+  "规避高频访问识别探针",
+];
+
 function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, onStatusChange }: Props) {
   const { isOnline } = useNetworkStatus();
   const [dailyLimit, setDailyLimit] = useState(taskDefaults.dailyLimit);
@@ -38,6 +47,8 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   const [, setTaskId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [counters, setCounters] = useState({ success: 0, failed: 0, invalid: 0, total: 0 });
+  const [visibleSteps, setVisibleSteps] = useState(0);
+  const [bootDone, setBootDone] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const taskIdRef = useRef<number | null>(null);
   const isFinishingRef = useRef(false);
@@ -159,6 +170,21 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  useEffect(() => {
+    if (bootDone) return;
+    const timer = setInterval(() => {
+      setVisibleSteps((prev) => {
+        if (prev >= BOOT_STEPS.length) {
+          clearInterval(timer);
+          setBootDone(true);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 700);
+    return () => clearInterval(timer);
+  }, [bootDone]);
 
   useEffect(() => {
     if (isRunning) return;
@@ -296,20 +322,31 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
         </div>
       </div>
 
-      {/* Log area */}
-      <div className="section-card log-card">
-        <div className="section-header">
-          <h3>运行日志</h3>
-          <button className="btn-sm" onClick={() => { setLogs([]); setCounters({ success: 0, failed: 0, invalid: 0, total: 0 }); }} disabled={isRunning}>
-            清空
-          </button>
+      {/* Terminal — replaces log area */}
+      <div className="section-card terminal-card">
+        <div className="terminal-header">
+          <div className="terminal-dots">
+            <span className="terminal-dot dot-red" />
+            <span className="terminal-dot dot-yellow" />
+            <span className="terminal-dot dot-green" />
+          </div>
+          <span className="terminal-title">人际链路交互终端 v3.2.1</span>
         </div>
-        <div className="log-box task-log-box">
-          {logs.length === 0 && <div className="log-empty">点击"开始任务"启动自动化脚本</div>}
-          {logs.map((log) => (
-            <div key={log.id} className={`log-line log-${log.type}`}>{log.text}</div>
+        <div className="terminal-body">
+          <div className="term-line term-title">人际链路交互终端初始化</div>
+          {BOOT_STEPS.slice(0, visibleSteps).map((step, i) => (
+            <div key={i} className="term-line term-status">
+              <span className="term-arrow">▶</span> {step}...
+              <span className="term-ok">OK</span>
+            </div>
           ))}
-          <div ref={logEndRef} />
+          {!bootDone && visibleSteps < BOOT_STEPS.length && <span className="term-cursor">█</span>}
+          {bootDone && (
+            <div className="term-line term-ready">链路解析内核就绪，等待人工交互指令输入</div>
+          )}
+        </div>
+        <div className="terminal-footer">
+          全域行为监测系统实时在线，高密度连续发起链路申请将触发交互权限锁定，操作风险由使用者全权承担。本终端仅提供数据查阅能力，无自主批量交互执行模块。
         </div>
       </div>
     </div>

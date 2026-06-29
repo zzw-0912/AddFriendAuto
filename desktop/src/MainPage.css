@@ -829,8 +829,100 @@
 .task-card .log-line.log-success { color: #4ade80; }
 .task-card .log-line.log-failed { color: #f87171; }
 .task-card .log-line.log-invalid { color: #fbbf24; }
-.task-card .log-line.log-error { color: #f87171; font-weight: bold; }
-.task-card .log-line.log-info { color: #60a5fa; }
+
+/* ─── Terminal ────────────────────────────────────── */
+.terminal-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+  border: 1px solid #1e2a3a;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #161b22;
+  border-bottom: 1px solid #1e2a3a;
+  flex-shrink: 0;
+}
+.terminal-dots { display: flex; gap: 6px; }
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.terminal-dot.dot-red { background: #ff5f56; }
+.terminal-dot.dot-yellow { background: #ffbd2e; }
+.terminal-dot.dot-green { background: #27c93f; }
+.terminal-title {
+  font-size: 12px;
+  color: #8b949e;
+  font-family: monospace;
+}
+.terminal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.term-line {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.term-title {
+  color: #58a6ff;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.term-status {
+  color: #c9d1d9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.term-arrow {
+  color: #58a6ff;
+  font-size: 10px;
+}
+.term-ok {
+  color: #3fb950;
+  font-size: 11px;
+  margin-left: auto;
+}
+.term-ready {
+  color: #3fb950;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.term-cursor {
+  color: #3fb950;
+  font-family: monospace;
+  font-size: 14px;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+.terminal-footer {
+  padding: 10px 18px;
+  background: #0d1117;
+  border-top: 1px solid #1e2a3a;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  color: #f85149;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
 
 /* ─── Toast ──────────────────────────────────────── */
 .toast {
