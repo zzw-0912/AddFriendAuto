@@ -14,7 +14,7 @@ function FeedbackPage() {
   const [data, setData] = useState<{ items: FeedbackItem[]; total: number } | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -44,42 +44,37 @@ function FeedbackPage() {
           {data?.items.map((item) => {
             const content = item.content || "";
             return (
-            <tr key={item.id}>
+            <tr
+              key={item.id}
+              className="feedback-row"
+              onClick={() => setSelectedFeedback(item)}
+            >
               <td>{item.id}</td>
               <td>{item.email || `#${item.user_id}`}</td>
               <td>
-                <div
-                  className="feedback-content"
-                  onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                >
-                  {expandedId === item.id ? content : content.slice(0, 60) + (content.length > 60 ? "..." : "")}
+                <div className="feedback-content">
+                  {content.slice(0, 60) + (content.length > 60 ? "..." : "")}
                 </div>
               </td>
               <td>
                 {item.images?.length ? (
                   <div className="feedback-thumbs">
-                    {item.images.map((url, i) => {
+                    {item.images.slice(0, 3).map((url, i) => {
                       const imageUrl = resolveAssetUrl(url);
                       const key = `${item.id}-${i}-${imageUrl}`;
                       return (
-                      <a key={key} href={imageUrl} target="_blank" rel="noreferrer" className="feedback-thumb-link">
-                        {failedImages[key] ? (
-                          <span className="feedback-thumb-broken">加载失败</span>
-                        ) : (
-                          <img
-                            src={imageUrl}
-                            alt="反馈图片"
-                            className="feedback-thumb"
-                            onError={() => setFailedImages((prev) => ({ ...prev, [key]: true }))}
-                          />
-                        )}
-                      </a>
+                        <img
+                          key={key}
+                          src={imageUrl}
+                          alt=""
+                          className="feedback-thumb"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
                       );
                     })}
+                    {item.images.length > 3 && <span className="feedback-more">+{item.images.length - 3}</span>}
                   </div>
-                ) : (
-                  <span className="text-muted">-</span>
-                )}
+                ) : null}
               </td>
               <td className="mono">{item.created_at?.slice(0, 19).replace("T", " ")}</td>
             </tr>
@@ -95,6 +90,52 @@ function FeedbackPage() {
         <span>第 {page} 页 / 共 {Math.ceil((data?.total || 0) / 20)} 页</span>
         <button disabled={(data?.items.length || 0) < 20} onClick={() => setPage(page + 1)}>下一页</button>
       </div>
+
+      {selectedFeedback && (
+        <div className="modal-overlay feedback-detail-overlay" onClick={() => setSelectedFeedback(null)}>
+          <div className="feedback-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="feedback-detail-header">
+              <h3>用户反馈详情</h3>
+              <button className="feedback-detail-close" onClick={() => setSelectedFeedback(null)}>✕</button>
+            </div>
+            <div className="feedback-detail-body">
+              <div className="feedback-detail-left">
+                <div className="feedback-detail-meta">
+                  <span><strong>用户：</strong>{selectedFeedback.email || `#${selectedFeedback.user_id}`}</span>
+                  <span><strong>时间：</strong>{selectedFeedback.created_at?.slice(0, 19).replace("T", " ")}</span>
+                </div>
+                <div className="feedback-detail-text">
+                  {selectedFeedback.content || "（无内容）"}
+                </div>
+              </div>
+              <div className="feedback-detail-right">
+                {selectedFeedback.images?.length ? (
+                  <div className="feedback-detail-images">
+                    {selectedFeedback.images.map((url, i) => {
+                      const imageUrl = resolveAssetUrl(url);
+                      const key = `${selectedFeedback.id}-${i}-${imageUrl}`;
+                      return failedImages[key] ? (
+                        <div key={key} className="feedback-detail-img-broken">图片加载失败</div>
+                      ) : (
+                        <a key={key} href={imageUrl} target="_blank" rel="noreferrer" className="feedback-detail-img-link">
+                          <img
+                            src={imageUrl}
+                            alt={`反馈图片 ${i + 1}`}
+                            className="feedback-detail-img"
+                            onError={() => setFailedImages((prev) => ({ ...prev, [key]: true }))}
+                          />
+                        </a>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="feedback-detail-noimg">暂无图片</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
