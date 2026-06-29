@@ -144,24 +144,27 @@ function MainPage({ apiBase, auth, machineCode, onLogout }: Props) {
           <p className="tutorial-intro">不同注册时间的微信号每日添加好友上限不同，请按照以下建议操作，超出限制可能导致账号异常。</p>
           <div className="tutorial-cards">
             <div className="tutorial-card">
-              <div className="tutorial-card-num">20</div>
+              <div className="tutorial-card-num">1</div>
               <div className="tutorial-card-body">
-                <strong>新注册微信号</strong>
-                <span>建议每天最多添加 20 人</span>
+                <strong>新号</strong>
+                <span>单日主动陌生人：3–5 人封顶，严禁批量加</span>
+                <span>每小时最多加 2 人，单次间隔 ≥ 30 分钟</span>
               </div>
             </div>
             <div className="tutorial-card">
-              <div className="tutorial-card-num">50</div>
+              <div className="tutorial-card-num">2</div>
               <div className="tutorial-card-body">
-                <strong>注册 2 年以上</strong>
-                <span>建议每天最多添加 50 人</span>
+                <strong>中期号</strong>
+                <span>每日安全主动添加：≤ 10 人</span>
+                <span>1 小时内不要超过 5 次申请</span>
               </div>
             </div>
             <div className="tutorial-card">
-              <div className="tutorial-card-num">80</div>
+              <div className="tutorial-card-num">3</div>
               <div className="tutorial-card-body">
-                <strong>注册 5 年以上</strong>
-                <span>建议每天最多添加 80 人</span>
+                <strong>老号</strong>
+                <span>单日安全主动上限：20 人</span>
+                <span>严禁连续快速点添加，每条申请间隔 5–10 分钟</span>
               </div>
             </div>
           </div>
