@@ -1,10 +1,10 @@
-import hashlib
 import random
 import string
 
 from sqlalchemy import text
 
 from app.core.database import SessionLocal, engine, Base
+from app.core.security import hash_password
 from app.models.admin_user import AdminUser
 from app.models.feedback import Feedback
 from app.models.plan import Plan
@@ -64,7 +64,7 @@ def init_db():
         if not db.query(AdminUser).first():
             admin = AdminUser(
                 username="admin",
-                password_hash=hashlib.sha256("admin123".encode()).hexdigest(),
+                password_hash=hash_password("admin123"),
                 role="super_admin",
                 status="active",
             )

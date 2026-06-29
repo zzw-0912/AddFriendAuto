@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.security import create_access_token
+from app.core.security import create_access_token, hash_password, verify_password
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.admin_user import AdminUser
 from app.models.contact import Contact
@@ -34,13 +34,32 @@ from app.schemas.admin import (
 from app.services.payment_service import process_order_payment
 
 
+def _is_bcrypt_hash(password_hash: str) -> bool:
+    return password_hash.startswith(("$2a$", "$2b$", "$2y$"))
+
+
+def _verify_admin_password(admin: AdminUser, password: str, db: Session) -> bool:
+    if _is_bcrypt_hash(admin.password_hash):
+        try:
+            return verify_password(password, admin.password_hash)
+        except ValueError:
+            return False
+
+    legacy_hash = hashlib.sha256(password.encode()).hexdigest()
+    if admin.password_hash != legacy_hash:
+        return False
+
+    admin.password_hash = hash_password(password)
+    db.commit()
+    return True
+
+
 def admin_login(username: str, password: str, db: Session) -> dict:
     admin = db.query(AdminUser).filter(AdminUser.username == username, AdminUser.status == "active").first()
     if not admin:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
-    if admin.password_hash != password_hash:
+    if not _verify_admin_password(admin, password, db):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_access_token({
