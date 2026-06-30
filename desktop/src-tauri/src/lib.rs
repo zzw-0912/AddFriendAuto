@@ -271,18 +271,65 @@ fn get_machine_code() -> String {
 fn list_wechat_windows() -> Result<Vec<WeChatWindowInfo>, String> {
     let script = r#"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$items = Get-Process |
-  Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
-  Where-Object { $_.MainWindowTitle -like '*微信*' -or $_.ProcessName -like '*WeChat*' } |
-  Sort-Object Id |
-  ForEach-Object {
-    [pscustomobject]@{
-      hwnd = [int64]$_.MainWindowHandle
-      pid = [int]$_.Id
-      title = [string]$_.MainWindowTitle
-      processName = [string]$_.ProcessName
-    }
+Add-Type -TypeDefinition @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+
+public static class FriendAutoWin32 {
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+  [DllImport("user32.dll")]
+  public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+  [DllImport("user32.dll")]
+  public static extern bool IsWindowVisible(IntPtr hWnd);
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  public static extern int GetWindowTextLengthW(IntPtr hWnd);
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int count);
+
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+"@
+
+$items = [System.Collections.Generic.List[object]]::new()
+$callback = [FriendAutoWin32+EnumWindowsProc]{
+  param([IntPtr]$hwnd, [IntPtr]$lparam)
+  if (-not [FriendAutoWin32]::IsWindowVisible($hwnd)) { return $true }
+  $length = [FriendAutoWin32]::GetWindowTextLengthW($hwnd)
+  if ($length -le 0) { return $true }
+
+  $buffer = [System.Text.StringBuilder]::new($length + 1)
+  [void][FriendAutoWin32]::GetWindowTextW($hwnd, $buffer, $buffer.Capacity)
+  $title = $buffer.ToString()
+  if ([string]::IsNullOrWhiteSpace($title)) { return $true }
+
+  [uint32]$processId = 0
+  [void][FriendAutoWin32]::GetWindowThreadProcessId($hwnd, [ref]$processId)
+  $processName = ""
+  try {
+    $processName = [string](Get-Process -Id $processId -ErrorAction Stop).ProcessName
+  } catch {}
+
+  if ($title -like '*微信*' -or $title -like '*WeChat*' -or $title -like '*Weixin*' -or $processName -like '*WeChat*' -or $processName -like '*Weixin*') {
+    $items.Add(
+      [pscustomobject]@{
+        hwnd = [int64]$hwnd.ToInt64()
+        pid = [int]$processId
+        title = [string]$title
+        processName = [string]$processName
+      }
+    )
   }
+  return $true
+}
+
+[void][FriendAutoWin32]::EnumWindows($callback, [IntPtr]::Zero)
+$items = @($items | Sort-Object pid, hwnd)
 $items | ConvertTo-Json -Compress
 "#;
     let stdout = run_powershell(script)?;
@@ -291,10 +338,38 @@ $items | ConvertTo-Json -Compress
 
 #[tauri::command]
 fn validate_wechat_binding(binding: WeChatWindowBinding) -> Result<bool, String> {
-    let windows = list_wechat_windows()?;
-    Ok(windows
-        .iter()
-        .any(|window| window.hwnd == binding.hwnd && window.pid == binding.pid))
+    let script = format!(
+        r#"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class FriendAutoValidateWin32 {{
+  [DllImport("user32.dll")]
+  public static extern bool IsWindow(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}}
+"@
+
+$hwnd = [IntPtr]::new({hwnd})
+$expectedProcessId = [uint32]{pid}
+if (-not [FriendAutoValidateWin32]::IsWindow($hwnd)) {{
+  "false"
+  exit
+}}
+
+[uint32]$actualProcessId = 0
+[void][FriendAutoValidateWin32]::GetWindowThreadProcessId($hwnd, [ref]$actualProcessId)
+if ($actualProcessId -eq $expectedProcessId) {{ "true" }} else {{ "false" }}
+"#,
+        hwnd = binding.hwnd,
+        pid = binding.pid
+    );
+    let stdout = run_powershell(&script)?;
+    Ok(stdout.trim().eq_ignore_ascii_case("true"))
 }
 
 #[tauri::command]

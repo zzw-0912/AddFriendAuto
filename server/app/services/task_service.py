@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,6 +13,9 @@ from app.schemas.status import MembershipInfo, TrialInfo
 from app.schemas.task import StartCheckResponse, TaskResponse
 
 
+STALE_RUNNING_TASK_HOURS = 12
+
+
 def allowed_slot_count(plan_id: int | None, has_membership: bool) -> int:
     if not has_membership:
         return 1
@@ -21,6 +24,28 @@ def allowed_slot_count(plan_id: int | None, has_membership: bool) -> int:
     if plan_id == 3:
         return 3
     return 1
+
+
+def finish_stale_running_tasks(user_id: int, slot_id: int, db: Session) -> None:
+    stale_before = datetime.utcnow() - timedelta(hours=STALE_RUNNING_TASK_HOURS)
+    stale_tasks = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.slot_id == slot_id,
+            Task.status == "running",
+            Task.started_at < stale_before,
+        )
+        .all()
+    )
+    if not stale_tasks:
+        return
+
+    finished_at = datetime.now(timezone.utc)
+    for task in stale_tasks:
+        task.status = "finished"
+        task.finished_at = finished_at
+    db.commit()
 
 
 def start_check(
@@ -79,6 +104,8 @@ def start_check(
             membership=membership_info,
             trial=trial_info,
         )
+
+    finish_stale_running_tasks(user.id, slot_id, db)
 
     running_task = (
         db.query(Task)

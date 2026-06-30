@@ -62,7 +62,8 @@
 - `stop_task` 改为接收 `run_id` 并只停止指定 worker。
 - stdout、stderr、exited 事件都会补齐 `run_id` 和 `slot_id`。
 - 新增 `list_wechat_windows` 命令，通过 PowerShell 枚举已打开微信窗口。
-- 新增 `validate_wechat_binding` 命令，启动前校验绑定窗口仍存在。
+- `list_wechat_windows` 已增强为 Win32 `EnumWindows` 顶层窗口枚举，不再只依赖 `Get-Process.MainWindowHandle`，可发现同一进程下的多个可见微信窗口。
+- 新增 `validate_wechat_binding` 命令，启动前直接校验绑定 `HWND` 是否仍存在且 PID 匹配，避免窗口列表漏枚举时误判失效。
 
 ### 后端与迁移
 
@@ -82,6 +83,9 @@
 - 如果找不到可绑定的微信 StartNode，会报错退出。
 - 保留之前的微信冷启动重试逻辑。
 - 未绑定时仍会清理旧 StartNode 窗口句柄，保持原有单微信兼容行为。
+- AutoDoor 后台消息输入 `bg` 已验证不适合当前微信链路，默认不启用；仅当环境变量 `FRIENDAUTO_FORCE_BG_INPUT=1` 时才会启用实验性后台输入。
+- AutoDoor 文本输入节点已预留 FriendAuto 侧跨进程剪贴板锁，仅在实验性后台输入启用时生效。
+- 为避免多个 worker 抢同一套物理鼠标键盘，worker 会在进入 AutoDoor 前获取 `%APPDATA%\FriendAuto\automation.lock` 全局自动化锁；拿不到锁的任务会等待并输出“等待其他微信任务释放鼠标键盘...”，获得锁后输出“已获得鼠标键盘控制权，开始执行”。
 
 ## 4. 重要文件修改记录
 
@@ -98,10 +102,14 @@
 ### Tauri
 
 - `desktop/src-tauri/src/lib.rs`：多 worker 管理、微信窗口枚举、绑定校验、事件补齐 `run_id/slot_id`。
+- `desktop/src-tauri/src/lib.rs`：微信窗口枚举从 `Get-Process.MainWindowHandle` 增强为 Win32 顶层窗口枚举。
+- `desktop/src-tauri/src/lib.rs`：微信绑定校验改为直接 `IsWindow + GetWindowThreadProcessId` 校验绑定快照。
 
 ### Worker
 
 - `scripts/platform_worker.py`：读取绑定快照并 patch AutoDoor StartNode。
+- `scripts/platform_worker.py`：实验性支持通过 `FRIENDAUTO_FORCE_BG_INPUT=1` 使用 AutoDoor 后台输入，并为该模式下的剪贴板粘贴增加跨进程锁。
+- `scripts/platform_worker.py`：进入 AutoDoor 前增加全局 `automation.lock` 排队，保证同一时间只有一个 worker 控制物理鼠标键盘。
 
 ### 后端
 
@@ -109,6 +117,7 @@
 - `server/app/schemas/task.py`：start-check 请求和任务响应增加 `slot_id`。
 - `server/app/api/tasks.py`：传递 `slot_id`。
 - `server/app/services/task_service.py`：套餐 slot 权限和同 slot running 防重。
+- `server/app/services/task_service.py`：启动检查前会自动收尾同用户同 slot 超过 12 小时的 stale running 任务，避免异常退出后永久卡住。
 - `server/app/schemas/admin.py`、`server/app/services/admin_service.py`：后台任务展示 slot。
 - `server/app/seed.py`：本地 SQLite 补列和索引兼容。
 - `server/alembic/env.py`：迁移数据库 URL 修正。
@@ -150,6 +159,12 @@ flowchart LR
 - `npm run lint` in `desktop`
 - `npm run build` in `admin`
 - `cargo check` in `desktop/src-tauri`
+- 本轮针对多窗口并发修复后已再次执行 `python -m py_compile scripts\platform_worker.py`
+- 本轮修复 stale running 和恢复默认输入后已再次执行 `python -m py_compile scripts\platform_worker.py`
+- 本轮修复 stale running 和恢复默认输入后已再次执行 `python -m compileall app` in `server`
+- 本轮修复 stale running 和恢复默认输入后已确认本地 SQLite 无 remaining `running` 任务
+- 本轮针对多窗口并发修复后已再次执行 `cargo check` in `desktop/src-tauri`
+- 本轮实现全局自动化执行队列后已再次执行 `python -m py_compile scripts\platform_worker.py`
 - 临时 SQLite 执行 `alembic upgrade head`
 - 本地 `server/friendauto.db` 已确认存在：
   - `tasks.slot_id`
@@ -162,7 +177,7 @@ flowchart LR
 - 停止其中一个任务，确认另一个任务不受影响。
 - 分别启动微信1、微信2、微信3任务，确认 AutoDoor 跑到对应微信窗口。
 - 清除绑定或关闭已绑定微信窗口后启动，确认显示明确错误且不误跑任务。
-- 同 PID 多微信窗口场景暂未增强；当前最好使用不同 PID 的微信实例。
+- 同 PID 多微信窗口的“主窗口枚举/绑定”已增强，但后续同标题窗口（如 `添加朋友`、`申请添加朋友`）仍需人工实测确认是否会串到同一 PID 下的其他窗口。
 
 ## 8. 下次会话建议入口
 

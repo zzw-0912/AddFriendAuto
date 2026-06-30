@@ -37,6 +37,8 @@ WECHAT_START_KEYWORDS = ["微信", "添加朋友", "申请添加朋友"]
 BOOTSTRAP_MAX_ATTEMPTS = 2
 BOOTSTRAP_RETRY_MAX_SECONDS = 8.0
 BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
+AUTOMATION_LOCK_FILE_NAME = "automation.lock"
+CLIPBOARD_LOCK_FILE_NAME = "clipboard.lock"
 
 
 @dataclass
@@ -95,6 +97,38 @@ def app_data_dir() -> Path:
     path = root / "FriendAuto"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+@contextlib.contextmanager
+def interprocess_file_lock(lock_file_name: str):
+    lock_path = app_data_dir() / lock_file_name
+    handle = lock_path.open("a+b")
+    locked = False
+    try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+
+        if os.name == "nt":
+            import msvcrt
+
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    locked = True
+                    break
+                except OSError:
+                    time.sleep(0.05)
+        yield
+    finally:
+        if locked and os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        handle.close()
 
 
 def load_config() -> AutoDoorConfig:
@@ -601,6 +635,38 @@ def import_autodoor(config: AutoDoorConfig):
     return ExecutionContext, BehaviorTreeEngine, Serializer, LogManager, LogLevel, UIUpdateDispatcher
 
 
+def patch_text_input_clipboard_lock() -> None:
+    from bt_nodes.actions.text_input import TextInputNode
+
+    if getattr(TextInputNode._input_text_fast, "_friendauto_clipboard_locked", False):
+        return
+
+    original_fast = TextInputNode._input_text_fast
+    original_slow = TextInputNode._input_text_slow
+
+    def locked_fast(self, context, text: str) -> None:
+        with interprocess_file_lock(CLIPBOARD_LOCK_FILE_NAME):
+            return original_fast(self, context, text)
+
+    def locked_slow(self, context, text: str) -> None:
+        with interprocess_file_lock(CLIPBOARD_LOCK_FILE_NAME):
+            return original_slow(self, context, text)
+
+    locked_fast._friendauto_clipboard_locked = True  # type: ignore[attr-defined]
+    locked_slow._friendauto_clipboard_locked = True  # type: ignore[attr-defined]
+    TextInputNode._input_text_fast = locked_fast
+    TextInputNode._input_text_slow = locked_slow
+
+
+def configure_bound_window_runtime() -> None:
+    from bt_utils.input_manager import InputControllerManager
+
+    manager = InputControllerManager()
+    manager._keyboard_method = "bg"
+    manager._mouse_method = "bg"
+    patch_text_input_clipboard_lock()
+
+
 def should_retry_bootstrap(outcome: RunOutcome, attempt: int) -> bool:
     return (
         attempt < BOOTSTRAP_MAX_ATTEMPTS
@@ -743,6 +809,9 @@ def run_autodoor_once(
 def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dict[str, Any]) -> None:
     deps = import_autodoor(config)
     run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
+    if parse_wechat_binding(task_config) and os.environ.get("FRIENDAUTO_FORCE_BG_INPUT") == "1":
+        configure_bound_window_runtime()
+        emit("progress", "已启用绑定窗口后台输入模式", run_id=run_id)
 
     emit(
         "started",
@@ -804,8 +873,12 @@ def main() -> int:
     try:
         config = load_config()
         prepared = prepare_run(config, task_config)
-        emit("progress", f"已创建运行副本: {prepared.project_dir}", run_id=str(task_config.get("run_id") or ""))
-        run_autodoor(config, prepared, task_config)
+        run_id = str(task_config.get("run_id") or "")
+        emit("progress", f"已创建运行副本: {prepared.project_dir}", run_id=run_id)
+        emit("progress", "等待其他微信任务释放鼠标键盘...", run_id=run_id)
+        with interprocess_file_lock(AUTOMATION_LOCK_FILE_NAME):
+            emit("progress", "已获得鼠标键盘控制权，开始执行", run_id=run_id)
+            run_autodoor(config, prepared, task_config)
         return 0
     except KeyboardInterrupt:
         emit("exited", "任务已停止")
