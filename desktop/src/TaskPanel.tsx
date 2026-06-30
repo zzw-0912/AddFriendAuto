@@ -43,6 +43,13 @@ const BOOT_STEPS = [
   "规避高频访问识别探针",
 ];
 
+const START_DELAY_SECONDS = 5;
+const DEFAULT_GREETING_TEXTS = [
+  "你好，很高兴认识你，方便加个微信交流一下吗？",
+  "您好，看到您的资料很不错，想加个好友认识一下。",
+  "你好，我这边想和你交流一下相关信息，方便通过好友吗？",
+];
+
 function TaskPanel({
   apiBase,
   token,
@@ -64,10 +71,14 @@ function TaskPanel({
   const [counters, setCounters] = useState({ success: 0, failed: 0, invalid: 0, total: 0 });
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [bootDone, setBootDone] = useState(false);
+  const [showAutomationPrompt, setShowAutomationPrompt] = useState(false);
+  const [startCountdown, setStartCountdown] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
   const taskIdRef = useRef<number | null>(null);
   const isFinishingRef = useRef(false);
   const processedResultKeysRef = useRef<Set<string>>(new Set());
+  const startDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const addLog = useCallback((text: string, type: LogEntry["type"] = "info") => {
     logId += 1;
@@ -221,7 +232,26 @@ function TaskPanel({
     saveTaskSlotConfig(slotId, { dailyLimit, createTag, greetingText });
   }, [createTag, dailyLimit, greetingText, isRunning, slotId]);
 
-  const handleStart = async () => {
+  useEffect(() => {
+    return () => {
+      if (startDelayTimerRef.current) clearTimeout(startDelayTimerRef.current);
+      if (startCountdownTimerRef.current) clearInterval(startCountdownTimerRef.current);
+    };
+  }, []);
+
+  const clearStartDelay = useCallback(() => {
+    if (startDelayTimerRef.current) {
+      clearTimeout(startDelayTimerRef.current);
+      startDelayTimerRef.current = null;
+    }
+    if (startCountdownTimerRef.current) {
+      clearInterval(startCountdownTimerRef.current);
+      startCountdownTimerRef.current = null;
+    }
+    setStartCountdown(0);
+  }, []);
+
+  const runStartTask = async () => {
     if (!isOnline) {
       addLog("无法启动：网络连接已断开", "error");
       return;
@@ -280,6 +310,32 @@ function TaskPanel({
     }
   };
 
+  const handleStartClick = () => {
+    if (!isOnline || isRunning || startCountdown > 0) return;
+    setShowAutomationPrompt(true);
+  };
+
+  const handleCancelAutomationPrompt = useCallback(() => {
+    clearStartDelay();
+    setShowAutomationPrompt(false);
+  }, [clearStartDelay]);
+
+  const handleConfirmAutomationPrompt = () => {
+    if (startCountdown > 0) return;
+    let remaining = START_DELAY_SECONDS;
+    setStartCountdown(remaining);
+    addLog(`已确认自动化提示，${START_DELAY_SECONDS} 秒后启动，请切换到微信${slotId}主窗口`, "info");
+    startCountdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setStartCountdown(Math.max(remaining, 0));
+    }, 1000);
+    startDelayTimerRef.current = setTimeout(() => {
+      clearStartDelay();
+      setShowAutomationPrompt(false);
+      runStartTask();
+    }, START_DELAY_SECONDS * 1000);
+  };
+
   const handleStop = async () => {
     addLog("正在停止任务...", "info");
     try {
@@ -307,7 +363,7 @@ function TaskPanel({
         </div>
         <div className="task-config">
           <div className="config-row">
-            <div className="field">
+            <div className="field daily-limit-field">
               <label>每日限额</label>
               <input
                 className="input config-input"
@@ -318,12 +374,6 @@ function TaskPanel({
                 onChange={(e) => setDailyLimit(Math.max(1, parseInt(e.target.value) || 1))}
                 disabled={isRunning}
               />
-            </div>
-            <div className="field check-field">
-              <label className="check-label">
-                <input type="checkbox" checked={createTag} onChange={(e) => setCreateTag(e.target.checked)} disabled={isRunning} />
-                创建标签
-              </label>
             </div>
           </div>
           <div className="field">
@@ -336,10 +386,25 @@ function TaskPanel({
               disabled={isRunning}
               rows={2}
             />
+            <div className="greeting-presets">
+              {DEFAULT_GREETING_TEXTS.map((text) => (
+                <button
+                  key={text}
+                  className={`greeting-preset-btn${greetingText === text ? " active" : ""}`}
+                  type="button"
+                  disabled={isRunning}
+                  onClick={() => setGreetingText(text)}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="task-actions">
             {!isRunning ? (
-              <button className="btn-start" onClick={handleStart} disabled={!isOnline} title={!isOnline ? "网络已断开，无法启动任务" : ""}>开始任务</button>
+              <button className="btn-start" onClick={handleStartClick} disabled={!isOnline || startCountdown > 0} title={!isOnline ? "网络已断开，无法启动任务" : ""}>
+                {startCountdown > 0 ? "等待切换..." : "开始任务"}
+              </button>
             ) : (
               <button className="btn-stop" onClick={handleStop}>停止任务</button>
             )}
@@ -402,6 +467,42 @@ function TaskPanel({
           全域行为监测系统实时在线，高密度连续发起链路申请将触发交互权限锁定，操作风险由使用者全权承担。本终端仅提供数据查阅能力，无自主批量交互执行模块。
         </div>
       </div>
+
+      {showAutomationPrompt && (
+        <div className="automation-warning-overlay" onClick={startCountdown > 0 ? undefined : handleCancelAutomationPrompt}>
+          <div className="automation-warning-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="automation-warning-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="4" y="3" width="16" height="12" rx="2.5" />
+                <path d="M8 21h8" />
+                <path d="M12 15v6" />
+                <path d="M9 7h6" />
+                <path d="M9 10h3" />
+              </svg>
+            </div>
+            <h3>自动化将控制鼠标和键盘</h3>
+            <ol className="automation-warning-list">
+              <li>请先打开微信主窗口（不必手动打开「添加朋友」）</li>
+              <li>点击确认后有 5 秒切换到微信</li>
+              <li>运行期间请勿操作浏览器或鼠标</li>
+            </ol>
+            {startCountdown > 0 && (
+              <div className="automation-countdown">
+                <strong>{startCountdown}</strong>
+                <span>秒后开始，请切换到微信{slotId}主窗口</span>
+              </div>
+            )}
+            <div className="automation-warning-actions">
+              <button className="automation-secondary-btn" type="button" onClick={handleCancelAutomationPrompt}>
+                {startCountdown > 0 ? "取消启动" : "取消"}
+              </button>
+              <button className="automation-primary-btn" type="button" onClick={handleConfirmAutomationPrompt} disabled={startCountdown > 0}>
+                确认，5 秒后启动
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

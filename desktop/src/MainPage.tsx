@@ -163,37 +163,72 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
     if (activeNav === "用户教程") {
       return (
         <div className="tutorial-page">
-          <h2 className="tutorial-heading">用户教程</h2>
-          <p className="tutorial-intro">不同注册时间的微信号每日添加好友上限不同，请按照以下建议操作，超出限制可能导致账号异常。</p>
-          <div className="tutorial-cards">
-            <div className="tutorial-card">
-              <div className="tutorial-card-num">1</div>
-              <div className="tutorial-card-body">
-                <strong>新号</strong>
-                <span>单日主动陌生人：3–5 人封顶，严禁批量加</span>
-                <span>每小时最多加 2 人，单次间隔 ≥ 30 分钟</span>
-              </div>
+          <div className="tutorial-hero">
+            <div>
+              <h2 className="tutorial-heading">用户教程</h2>
+              <p className="tutorial-intro">按照下面 3 步完成任务配置。运行自动化前请先确认微信主窗口已打开，避免任务启动后找不到目标窗口。</p>
             </div>
-            <div className="tutorial-card">
-              <div className="tutorial-card-num">2</div>
-              <div className="tutorial-card-body">
-                <strong>中期号</strong>
-                <span>每日安全主动添加：≤ 10 人</span>
-                <span>1 小时内不要超过 5 次申请</span>
-              </div>
-            </div>
-            <div className="tutorial-card">
-              <div className="tutorial-card-num">3</div>
-              <div className="tutorial-card-body">
-                <strong>老号</strong>
-                <span>单日安全主动上限：20 人</span>
-                <span>严禁连续快速点添加，每条申请间隔 5–10 分钟</span>
-              </div>
+            <div className="tutorial-flow">
+              <span>设置限额</span>
+              <span>选择招呼语</span>
+              <span>开始任务</span>
             </div>
           </div>
+
+          <div className="tutorial-steps">
+            <article className="tutorial-step-card">
+              <div className="tutorial-step-copy">
+                <span className="tutorial-step-num">01</span>
+                <h3>设置每日微信加人人数</h3>
+                <p>在“每日限额”里填写当天希望自动添加的人数。建议先小数量测试，确认微信账号状态稳定后再逐步调整。</p>
+                <div className="tutorial-limit-guide">
+                  <div className="tutorial-limit-row">
+                    <strong>新号（注册 0–3 个月，未养好）</strong>
+                    <span>单日建议 <b>3–5 人</b>；每小时最多加 <b>2 人</b>；单次间隔 <b>≥ 50 分钟</b>。</span>
+                  </div>
+                  <div className="tutorial-limit-row">
+                    <strong>中期号（3 个月–1 年，实名绑卡）</strong>
+                    <span>单日建议 <b>≤ 10 人</b>；每小时不要超过 <b>5 次申请</b>。</span>
+                  </div>
+                  <div className="tutorial-limit-row">
+                    <strong>老号（1 年以上、高活跃、无违规）</strong>
+                    <span>单日建议 <b>≤ 20 人</b>；避免连续快速添加。</span>
+                  </div>
+                </div>
+              </div>
+              <div className="tutorial-image-frame">
+                <img src="/tutorial/daily-limit.png" alt="设置每日微信加人人数" />
+              </div>
+            </article>
+
+            <article className="tutorial-step-card">
+              <div className="tutorial-step-copy">
+                <span className="tutorial-step-num">02</span>
+                <h3>设置默认打招呼语</h3>
+                <p>可以手动输入招呼语，也可以点击下方 3 条默认话术快速填入。选中后仍然可以继续修改文字。</p>
+                <div className="tutorial-tip">建议使用自然、简短、不夸张的文案，减少被微信风控识别的风险。</div>
+              </div>
+              <div className="tutorial-image-frame">
+                <img src="/tutorial/greeting-presets.png" alt="设置默认打招呼语" />
+              </div>
+            </article>
+
+            <article className="tutorial-step-card">
+              <div className="tutorial-step-copy">
+                <span className="tutorial-step-num">03</span>
+                <h3>开始执行加人程序</h3>
+                <p>点击“开始任务”后会弹出自动化提示。确认后有 5 秒时间切换到微信，之后程序会接管鼠标和键盘。</p>
+                <div className="tutorial-tip">运行期间请勿操作浏览器、微信或鼠标，等待任务完成或手动停止。</div>
+              </div>
+              <div className="tutorial-image-frame">
+                <img src="/tutorial/start-task.png" alt="开始执行加人程序" />
+              </div>
+            </article>
+          </div>
+
           <div className="tutorial-warning">
-            <strong>⚠️ 温馨提示</strong>
-            <p>如未按以上建议操作，导致微信号被限制或被封禁，本平台概不负责。请合理使用，遵守微信平台规则。</p>
+            <strong>温馨提示</strong>
+            <p>请合理设置每日限额并遵守微信平台规则。如未按建议操作导致微信号被限制或封禁，本平台不承担账号风险。</p>
           </div>
         </div>
       );
