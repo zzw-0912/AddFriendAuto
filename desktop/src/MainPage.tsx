@@ -233,6 +233,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               apiBase={apiBase}
               token={auth.token}
               status={status}
+              slotId={i + 1}
               taskDefaults={taskDefaults}
               taskDefaultsVersion={taskDefaultsVersion}
               onStatusChange={fetchStatus}

@@ -99,6 +99,7 @@ export interface TaskListItem {
   user_id: number;
   email?: string | null;
   device_id: number;
+  slot_id: number;
   daily_limit: number;
   status: string;
   started_at: string;

@@ -1631,6 +1631,12 @@
   margin-bottom: 18px;
 }
 
+.profile-card-header.compact {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
 .profile-avatar {
   width: 48px;
   height: 48px;
@@ -1877,6 +1883,50 @@
   font-weight: 700;
   overflow-wrap: anywhere;
   user-select: text;
+}
+
+.wechat-bind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wechat-bind-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.9fr) minmax(220px, 1.2fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.wechat-bind-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wechat-bind-meta strong {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.wechat-bind-meta span,
+.wechat-bind-meta small {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.wechat-bind-select {
+  width: 100%;
+}
+
+.wechat-bind-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .settings-primary-btn,
@@ -2204,6 +2254,12 @@
   .settings-form-grid,
   .settings-path-grid {
     grid-template-columns: 1fr;
+  }
+  .wechat-bind-row {
+    grid-template-columns: 1fr;
+  }
+  .wechat-bind-actions {
+    justify-content: flex-start;
   }
   .settings-info-list {
     grid-template-columns: 1fr;

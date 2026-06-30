@@ -4,6 +4,23 @@ export interface TaskDefaults {
   greetingText: string;
 }
 
+export interface WeChatWindowInfo {
+  hwnd: number;
+  pid: number;
+  title: string;
+  processName: string;
+  displayName: string;
+}
+
+export interface WeChatWindowBinding {
+  slotId: number;
+  hwnd: number;
+  pid: number;
+  title: string;
+  displayName: string;
+  boundAt: string;
+}
+
 export interface AutoDoorConfig {
   autodoorSourcePath: string;
   projectPath: string;
@@ -11,6 +28,8 @@ export interface AutoDoorConfig {
 }
 
 export const TASK_DEFAULTS_STORAGE_KEY = "friendauto.taskDefaults.v1";
+export const TASK_SLOT_CONFIGS_STORAGE_KEY = "friendauto.taskSlotConfigs.v1";
+export const WECHAT_BINDINGS_STORAGE_KEY = "friendauto.wechatBindings.v1";
 
 export const DEFAULT_TASK_DEFAULTS: TaskDefaults = {
   dailyLimit: 20,

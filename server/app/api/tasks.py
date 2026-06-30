@@ -16,7 +16,7 @@ def check_start(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return start_check(user, req.daily_limit, req.create_tag, req.greeting_text, db)
+    return start_check(user, req.slot_id, req.daily_limit, req.create_tag, req.greeting_text, db)
 
 
 @router.post("/{task_id}/results")

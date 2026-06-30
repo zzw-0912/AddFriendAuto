@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -21,7 +22,28 @@ struct AutoDoorConfig {
 }
 
 struct TaskState {
-    child: Option<Child>,
+    children: HashMap<String, Child>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WeChatWindowInfo {
+    hwnd: u64,
+    pid: u32,
+    title: String,
+    process_name: String,
+    display_name: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WeChatWindowBinding {
+    hwnd: u64,
+    pid: u32,
+    title: String,
+    display_name: String,
+    #[serde(default)]
+    bound_at: String,
 }
 
 fn data_dir() -> PathBuf {
@@ -100,6 +122,110 @@ fn resolve_worker_path() -> Result<PathBuf, String> {
     Err("未找到 scripts/platform_worker.py".to_string())
 }
 
+fn run_powershell(script: &str) -> Result<String, String> {
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ])
+        .output()
+        .map_err(|e| format!("PowerShell 启动失败: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "PowerShell 命令执行失败".to_string()
+        } else {
+            stderr
+        });
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn parse_wechat_windows(stdout: &str) -> Result<Vec<WeChatWindowInfo>, String> {
+    if stdout.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let value: serde_json::Value = serde_json::from_str(stdout).map_err(|e| e.to_string())?;
+    let values = match value {
+        serde_json::Value::Array(items) => items,
+        serde_json::Value::Object(_) => vec![value],
+        serde_json::Value::Null => Vec::new(),
+        _ => return Ok(Vec::new()),
+    };
+
+    let mut windows = Vec::new();
+    for item in values {
+        let hwnd = item.get("hwnd").and_then(|v| v.as_u64()).unwrap_or(0);
+        let pid = item.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let process_name = item
+            .get("processName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if hwnd == 0 || pid == 0 || title.trim().is_empty() {
+            continue;
+        }
+        let display_name = format!("{} (PID: {}, HWND: {})", title, pid, hwnd);
+        windows.push(WeChatWindowInfo {
+            hwnd,
+            pid,
+            title,
+            process_name,
+            display_name,
+        });
+    }
+    Ok(windows)
+}
+
+fn enrich_script_payload(raw: &str, run_id: &str, slot_id: i64) -> String {
+    let mut value = serde_json::from_str::<serde_json::Value>(raw).unwrap_or_else(|_| {
+        serde_json::json!({
+            "event": "output",
+            "message": raw,
+        })
+    });
+
+    if let Some(object) = value.as_object_mut() {
+        object
+            .entry("run_id".to_string())
+            .or_insert_with(|| serde_json::Value::String(run_id.to_string()));
+        object
+            .entry("slot_id".to_string())
+            .or_insert_with(|| serde_json::Value::Number(slot_id.into()));
+    }
+
+    value.to_string()
+}
+
+fn task_identity(config_json: &str) -> Result<(String, i64), String> {
+    let value: serde_json::Value = serde_json::from_str(config_json).map_err(|e| e.to_string())?;
+    let run_id = value
+        .get("run_id")
+        .and_then(|v| v.as_str())
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            value.get("task_id").and_then(|v| {
+                if let Some(id) = v.as_i64() {
+                    Some(id.to_string())
+                } else {
+                    v.as_str().map(|s| s.to_string())
+                }
+            })
+        })
+        .ok_or_else(|| "任务配置缺少 run_id".to_string())?;
+    let slot_id = value.get("slot_id").and_then(|v| v.as_i64()).unwrap_or(1);
+    Ok((run_id, slot_id))
+}
+
 fn resolve_editor_executable(path: &str) -> Result<PathBuf, String> {
     let editor_path = PathBuf::from(path);
     if editor_path.is_file() {
@@ -142,14 +268,45 @@ fn get_machine_code() -> String {
 }
 
 #[tauri::command]
+fn list_wechat_windows() -> Result<Vec<WeChatWindowInfo>, String> {
+    let script = r#"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$items = Get-Process |
+  Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
+  Where-Object { $_.MainWindowTitle -like '*微信*' -or $_.ProcessName -like '*WeChat*' } |
+  Sort-Object Id |
+  ForEach-Object {
+    [pscustomobject]@{
+      hwnd = [int64]$_.MainWindowHandle
+      pid = [int]$_.Id
+      title = [string]$_.MainWindowTitle
+      processName = [string]$_.ProcessName
+    }
+  }
+$items | ConvertTo-Json -Compress
+"#;
+    let stdout = run_powershell(script)?;
+    parse_wechat_windows(&stdout)
+}
+
+#[tauri::command]
+fn validate_wechat_binding(binding: WeChatWindowBinding) -> Result<bool, String> {
+    let windows = list_wechat_windows()?;
+    Ok(windows
+        .iter()
+        .any(|window| window.hwnd == binding.hwnd && window.pid == binding.pid))
+}
+
+#[tauri::command]
 fn start_task(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Mutex<TaskState>>,
     config_json: String,
 ) -> Result<(), String> {
+    let (run_id, slot_id) = task_identity(&config_json)?;
     let mut state = state.lock().map_err(|e| e.to_string())?;
 
-    if let Some(mut child) = state.child.take() {
+    if let Some(mut child) = state.children.remove(&run_id) {
         let _ = child.kill();
         let _ = child.wait();
     }
@@ -173,22 +330,31 @@ fn start_task(
     let stdout = child.stdout.take().ok_or("No stdout")?;
     let reader = BufReader::new(stdout);
     let app = app_handle.clone();
+    let stdout_run_id = run_id.clone();
 
     std::thread::spawn(move || {
         for line in reader.lines() {
             if let Ok(line) = line {
                 let trimmed = line.trim().to_string();
                 if !trimmed.is_empty() {
-                    let _ = app.emit("script-event", trimmed);
+                    let payload = enrich_script_payload(&trimmed, &stdout_run_id, slot_id);
+                    let _ = app.emit("script-event", payload);
                 }
             }
         }
-        let _ = app.emit("script-event", r#"{"event":"exited"}"#);
+        let payload = serde_json::json!({
+            "event": "exited",
+            "run_id": stdout_run_id,
+            "slot_id": slot_id,
+        })
+        .to_string();
+        let _ = app.emit("script-event", payload);
     });
 
     if let Some(stderr) = child.stderr.take() {
         let err_reader = BufReader::new(stderr);
         let err_app = app_handle.clone();
+        let err_run_id = run_id.clone();
         std::thread::spawn(move || {
             for line in err_reader.lines() {
                 if let Ok(line) = line {
@@ -197,6 +363,8 @@ fn start_task(
                         let payload = serde_json::json!({
                             "event": "error",
                             "message": trimmed,
+                            "run_id": err_run_id,
+                            "slot_id": slot_id,
                         })
                         .to_string();
                         let _ = err_app.emit("script-event", payload);
@@ -206,14 +374,14 @@ fn start_task(
         });
     }
 
-    state.child = Some(child);
+    state.children.insert(run_id, child);
     Ok(())
 }
 
 #[tauri::command]
-fn stop_task(state: tauri::State<'_, Mutex<TaskState>>) -> Result<(), String> {
+fn stop_task(state: tauri::State<'_, Mutex<TaskState>>, run_id: String) -> Result<(), String> {
     let mut state = state.lock().map_err(|e| e.to_string())?;
-    if let Some(mut child) = state.child.take() {
+    if let Some(mut child) = state.children.remove(&run_id) {
         let _ = child.kill();
         let _ = child.wait();
     }
@@ -290,7 +458,7 @@ fn open_autodoor_editor(config: AutoDoorConfig) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(Mutex::new(TaskState { child: None }))
+        .manage(Mutex::new(TaskState { children: HashMap::new() }))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -303,6 +471,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_machine_code,
+            list_wechat_windows,
+            validate_wechat_binding,
             start_task,
             stop_task,
             save_token,

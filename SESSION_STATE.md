@@ -1,103 +1,196 @@
-# FriendAuto 新会话交接
+# FriendAuto 当前会话交接
 
-更新时间：2026-06-29  
-当前 HEAD：`ebb7322`  
+更新时间：2026-06-30  
 当前分支：`master`  
-远程仓库：`git@github.com:zzw-0912/AddFriendAuto.git`
+远程仓库：`git@github.com:zzw-0912/AddFriendAuto.git`  
+本轮主题：多任务配置绑定独立微信窗口
 
-> 下次新会话优先读本文件和 `PROJECT_CURRENT_STATE.md`。旧快照或旧规划与当前实现冲突时，以当前实现为准。
+> 下次新会话优先读取本文件。历史文件 `SESSION_SUMMARY.md` 只作归档入口；若历史摘要和当前实现冲突，以本文件和代码为准。
 
-## 1. 当前功能事实
+## 1. 本轮需求
 
-- FriendAuto 是 Windows 桌面端 + FastAPI 后端 + React 管理后台 + Python AutoDoor worker 的 monorepo。
-- 登录是邮箱 + 密码；注册和找回密码使用 6 位验证码。
-- debug 测试账号：`test@friendauto.com / 888888`。
-- 管理员账号：`admin / admin123`。
-- 一台设备可绑定多个账号；一个账号只能绑定一台设备。
-- 当前支付为人工充值，桌面端创建 `manual_wechat` 订单，后台确认收款后开通会员。
-- 微信支付和支付宝支付大概率后续接入，但当前不是正式能力。
-- mock 支付 callback 只用于 debug，非 debug 环境禁用。
-- 当前侧边栏顶部为 `首页`、`用户教程`，底部为 `客服`、`反馈`、`我的`。
-- `SettingsPage.tsx` 保留为 legacy，但不在导航；设置能力已合并到 Profile。
-- 当前数据库模型为 13 张表，包含 `feedbacks`。
-- 网络断开处理已存在：离线横幅、API 网络异常封装、任务启动离线阻断。
+用户要实现月卡、季卡、年卡对应不同数量的任务配置，并且每个任务配置可以独立绑定一个微信窗口运行：
 
-## 2. 支付流程
+- 月卡解锁 1 个任务配置，对应 `微信1`。
+- 季卡解锁 2 个任务配置，对应 `微信1`、`微信2`。
+- 年卡解锁 3 个任务配置，对应 `微信1`、`微信2`、`微信3`。
+- 多个任务可以同时运行。
+- 每个任务配置必须只显示自己的日志、计数和退出事件。
+- 启动任务时必须跑到手动绑定的微信窗口，避免总是命中第一个微信。
 
-当前人工充值流程：
+## 2. 关键决策
 
-1. 用户在 `desktop/src/PaymentModal.tsx` 选择套餐。
-2. 桌面端调用 `POST /orders` 创建 `manual_wechat` 的 `pending` 订单。
-3. 弹出 `QRCodeModal`，展示客服二维码、订单号、套餐、金额和账号。
-4. 管理员在后台订单页确认收款。
-5. `POST /admin/orders/{order_id}/confirm-payment` 调用共享落账逻辑，创建或延长会员。
+- 采用“手动绑定微信窗口”的方案，不自动拉起或登录微信。
+- 微信窗口绑定 UI 放在 `desktop/src/ProfilePage.tsx` 的“我的”页；`SettingsPage.tsx` 仍为 legacy，不在当前导航里。
+- slot 数量根据会员套餐判断：
+  - 无会员、试用或 `plan_id = 1`：1 个 slot。
+  - `plan_id = 2`：2 个 slot。
+  - `plan_id = 3`：3 个 slot。
+- 每个 slot 独立保存 `dailyLimit`、`createTag`、`greetingText` 到本地配置。
+- 全局默认任务配置只作为新 slot 的初始化 fallback。
+- 任务事件统一以 `run_id` 和 `slot_id` 归属，前端只处理当前任务卡对应事件。
+- Tauri 不再维护单个 worker，而是用 `HashMap<run_id, Child>` 管理多个并发 worker。
+- 后端通过 `slot_id` 记录任务来源，并阻止同一用户同一 slot 重复创建 running 任务。
+- worker 在运行前 patch AutoDoor 树，把微信 StartNode 的 `window_pid/window_hwnd/window_title` 指向绑定窗口。
 
-后续官方支付路线：
+## 3. 已完成实现
 
-- 微信支付：验签、回调、幂等、订单状态同步、后台审计。
-- 支付宝支付：验签、回调、幂等、订单状态同步、后台审计。
-- 当前 `/payments/wechat/callback` 和 `/payments/alipay/callback` 只能作为 debug mock。
+### 桌面端任务卡
 
-## 3. 主要模块
+- `TaskCard/TaskPanel` 增加 `slotId`。
+- 任务标题显示为 `微信1任务配置`、`微信2任务配置`、`微信3任务配置`。
+- 根据会员套餐渲染 1/2/3 张任务卡。
+- 每个任务卡独立持久化配置。
+- 启动前读取对应 slot 的微信绑定。
+- 如果未绑定或绑定窗口失效，前端直接显示明确错误，不启动后端任务。
+- 启动任务时把 `slot_id` 和 `wechat_binding` 一起传给 Tauri worker。
+- 停止任务时按当前 `run_id` 停止，不影响其他正在运行的 slot。
+- `script-event` 处理时按 `slot_id/run_id` 过滤，避免日志和计数串台。
 
-| 路径 | 说明 |
-|---|---|
-| `desktop/src/App.tsx` | token 恢复、登录态、多账号切换 |
-| `desktop/src/MainPage.tsx` | 侧边栏、首页、教程、客服/反馈/我的入口 |
-| `desktop/src/ProfilePage.tsx` | 个人中心、设备信息、密码修改、多账号切换 |
-| `desktop/src/TaskPanel.tsx` | 任务配置、启动/停止、日志、结果上报 |
-| `desktop/src/PaymentModal.tsx` | 人工充值订单创建 |
-| `desktop/src/api.ts` | API 封装、异常类、多账号本地存储 |
-| `desktop/src/SettingsPage.tsx` | legacy，不在导航 |
-| `desktop/src-tauri/src/lib.rs` | Tauri 命令、token、本机配置、worker 管理 |
-| `scripts/platform_worker.py` | 真实 AutoDoor bridge worker |
-| `server/app/api/admin.py` | 管理后台 API |
-| `server/app/services/payment_service.py` | 支付/会员落账 |
-| `server/app/services/admin_service.py` | 人工确认收款、审计等后台逻辑 |
-| `server/app/seed.py` | SQLite 本地补列和种子数据 |
+### “我的”页微信绑定
 
-## 4. 已知风险
+- 新增“微信窗口绑定”区域。
+- 支持刷新当前已打开微信窗口。
+- 支持给 `微信1/微信2/微信3` 分别选择窗口并绑定。
+- 支持清除绑定。
+- 本地保存绑定快照：`hwnd`、`pid`、`title`、`displayName`、`boundAt`。
 
-- 官方支付尚未接入，当前人工充值依赖运营确认。
-- Alembic 只有初始迁移，后续列和表仍有部分由 `seed.py` 兼容补齐。
-- `SettingsPage.tsx` 未来可删除，但本轮不要删除。
-- 多账号 token 当前存于 localStorage，后续可迁到 Tauri 原生存储。
-- AutoDoor 源码和项目目录在仓库外：`D:\AddFriend\autodoor_behavior_tree`、`D:\AddFriend\Addfriend`。
+### Tauri 多任务进程
 
-## 5. 下次建议先读
+- `TaskState` 从单个 `Child` 改为 `HashMap<String, Child>`。
+- `start_task` 解析 `run_id/slot_id` 后，只替换同一 `run_id` 的旧 worker。
+- `stop_task` 改为接收 `run_id` 并只停止指定 worker。
+- stdout、stderr、exited 事件都会补齐 `run_id` 和 `slot_id`。
+- 新增 `list_wechat_windows` 命令，通过 PowerShell 枚举已打开微信窗口。
+- 新增 `validate_wechat_binding` 命令，启动前校验绑定窗口仍存在。
 
-1. `PROJECT_CURRENT_STATE.md`
-2. `SESSION_STATE.md`
-3. `desktop/src/App.tsx`
-4. `desktop/src/MainPage.tsx`
-5. `desktop/src/ProfilePage.tsx`
-6. `desktop/src/TaskPanel.tsx`
-7. `desktop/src/PaymentModal.tsx`
-8. `desktop/src-tauri/src/lib.rs`
-9. `scripts/platform_worker.py`
-10. `server/app/services/payment_service.py`
-11. `server/app/services/admin_service.py`
-12. `server/app/seed.py`
+### 后端与迁移
 
-## 6. 检查入口
+- `/tasks/start-check` 增加 `slot_id`。
+- `tasks` 表新增 `slot_id` 字段。
+- 新增索引 `ix_tasks_user_slot_status`。
+- 后台任务响应和管理后台任务列表包含 `slot_id`。
+- `task_service.start_check` 会检查套餐 slot 权限。
+- 同一用户同一 slot 已有 running 任务时，拒绝重复启动。
+- `seed.py` 增加本地 SQLite 兼容补列逻辑，避免旧库缺少 `slot_id`。
+- `server/alembic/env.py` 调整为使用应用配置里的数据库 URL，确保迁移目标一致。
 
-```powershell
-cd D:\FriendAuto
-.\scripts\check_all.ps1
+### Worker / AutoDoor
+
+- `scripts/platform_worker.py` 接收 `slot_id` 和 `wechat_binding`。
+- patch AutoDoor 树时为微信相关 StartNode 写入绑定窗口。
+- 如果找不到可绑定的微信 StartNode，会报错退出。
+- 保留之前的微信冷启动重试逻辑。
+- 未绑定时仍会清理旧 StartNode 窗口句柄，保持原有单微信兼容行为。
+
+## 4. 重要文件修改记录
+
+### 桌面前端
+
+- `desktop/src/MainPage.tsx`：根据套餐计算 slot 数量并渲染任务卡。
+- `desktop/src/TaskCard.tsx`：透传 `slotId`。
+- `desktop/src/TaskPanel.tsx`：slot 独立配置、绑定校验、事件过滤、按 `run_id` 停止。
+- `desktop/src/ProfilePage.tsx`：新增微信窗口绑定 UI。
+- `desktop/src/localSettings.ts`：新增任务 slot 配置和微信绑定的 localStorage 封装。
+- `desktop/src/types.ts`：新增微信窗口、绑定、slot 配置相关类型。
+- `desktop/src/MainPage.css`：新增多任务卡和微信绑定区域样式。
+
+### Tauri
+
+- `desktop/src-tauri/src/lib.rs`：多 worker 管理、微信窗口枚举、绑定校验、事件补齐 `run_id/slot_id`。
+
+### Worker
+
+- `scripts/platform_worker.py`：读取绑定快照并 patch AutoDoor StartNode。
+
+### 后端
+
+- `server/app/models/task.py`：`Task.slot_id`。
+- `server/app/schemas/task.py`：start-check 请求和任务响应增加 `slot_id`。
+- `server/app/api/tasks.py`：传递 `slot_id`。
+- `server/app/services/task_service.py`：套餐 slot 权限和同 slot running 防重。
+- `server/app/schemas/admin.py`、`server/app/services/admin_service.py`：后台任务展示 slot。
+- `server/app/seed.py`：本地 SQLite 补列和索引兼容。
+- `server/alembic/env.py`：迁移数据库 URL 修正。
+- `server/alembic/versions/b4f2a8c9d103_add_task_slot_id.py`：新增任务 slot 迁移。
+
+### 管理后台
+
+- `admin/src/api.ts`：任务类型增加 `slot_id`。
+- `admin/src/TasksPage.tsx`：任务列表展示 slot 来源。
+
+## 5. 架构思路
+
+```mermaid
+flowchart LR
+  User["用户在任务卡点击开始"] --> Panel["TaskPanel(slotId)"]
+  Panel --> Binding["读取本地 WeChat binding"]
+  Panel --> Check["POST /tasks/start-check(slot_id)"]
+  Check --> DB["tasks.slot_id + running 防重"]
+  Panel --> Tauri["Tauri start_task(config)"]
+  Tauri --> Worker["platform_worker.py"]
+  Worker --> Tree["Patch AutoDoor run copy"]
+  Tree --> WeChat["指定微信窗口 PID/HWND"]
+  Worker --> Events["stdout/stderr/exited with run_id + slot_id"]
+  Events --> Panel
 ```
 
-如果需要拆开执行：
+核心边界：
+
+- 前端负责 slot UI、本地配置、窗口绑定和事件归属。
+- Tauri 负责本机窗口枚举、绑定有效性校验和 worker 生命周期管理。
+- 后端负责会员权限、任务记录和同 slot 运行态约束。
+- worker 负责把绑定快照转换为 AutoDoor 可以识别的窗口目标。
+
+## 6. 已执行验证
+
+- `python -m py_compile scripts\platform_worker.py`
+- `python -m compileall app`
+- `npm run build` in `desktop`
+- `npm run lint` in `desktop`
+- `npm run build` in `admin`
+- `cargo check` in `desktop/src-tauri`
+- 临时 SQLite 执行 `alembic upgrade head`
+- 本地 `server/friendauto.db` 已确认存在：
+  - `tasks.slot_id`
+  - `ix_tasks_user_slot_status`
+
+## 7. 仍需人工回归
+
+- 月卡、季卡、年卡分别登录，确认任务卡数量为 1/2/3。
+- 绑定微信1、微信2后同时启动两个任务，确认两个 worker 并行存在。
+- 停止其中一个任务，确认另一个任务不受影响。
+- 分别启动微信1、微信2、微信3任务，确认 AutoDoor 跑到对应微信窗口。
+- 清除绑定或关闭已绑定微信窗口后启动，确认显示明确错误且不误跑任务。
+- 同 PID 多微信窗口场景暂未增强；当前最好使用不同 PID 的微信实例。
+
+## 8. 下次会话建议入口
+
+1. `SESSION_STATE.md`
+2. `PROJECT_CURRENT_STATE.md`
+3. `desktop/src/MainPage.tsx`
+4. `desktop/src/TaskPanel.tsx`
+5. `desktop/src/ProfilePage.tsx`
+6. `desktop/src-tauri/src/lib.rs`
+7. `scripts/platform_worker.py`
+8. `server/app/services/task_service.py`
+9. `server/alembic/versions/b4f2a8c9d103_add_task_slot_id.py`
+
+## 9. 常用检查命令
 
 ```powershell
-cd D:\FriendAuto\server
-python -m compileall app
-
 cd D:\FriendAuto
 python -m py_compile scripts\platform_worker.py
+
+cd D:\FriendAuto\server
+python -m compileall app
 
 cd D:\FriendAuto\desktop
 npm run build
 npm run lint
+
+cd D:\FriendAuto\desktop\src-tauri
+cargo check
 
 cd D:\FriendAuto\admin
 npm run build

@@ -111,6 +111,7 @@ class TaskListItem(BaseModel):
     user_id: int
     email: str | None = None
     device_id: int
+    slot_id: int = 1
     daily_limit: int
     status: str
     started_at: datetime

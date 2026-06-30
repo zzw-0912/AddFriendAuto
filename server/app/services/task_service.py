@@ -13,7 +13,24 @@ from app.schemas.status import MembershipInfo, TrialInfo
 from app.schemas.task import StartCheckResponse, TaskResponse
 
 
-def start_check(user: User, daily_limit: int, create_tag: bool, greeting_text: str | None, db: Session) -> StartCheckResponse:
+def allowed_slot_count(plan_id: int | None, has_membership: bool) -> int:
+    if not has_membership:
+        return 1
+    if plan_id == 2:
+        return 2
+    if plan_id == 3:
+        return 3
+    return 1
+
+
+def start_check(
+    user: User,
+    slot_id: int,
+    daily_limit: int,
+    create_tag: bool,
+    greeting_text: str | None,
+    db: Session,
+) -> StartCheckResponse:
     device = db.query(Device).filter(Device.user_id == user.id, Device.status == "active").first()
     device_id = device.id if device else 0
 
@@ -31,6 +48,7 @@ def start_check(user: User, daily_limit: int, create_tag: bool, greeting_text: s
     if active_membership:
         membership_info = MembershipInfo(
             is_active=True,
+            plan_id=active_membership.plan_id,
             starts_at=active_membership.starts_at,
             ends_at=active_membership.ends_at,
         )
@@ -53,9 +71,32 @@ def start_check(user: User, daily_limit: int, create_tag: bool, greeting_text: s
             trial=trial_info,
         )
 
+    max_slots = allowed_slot_count(active_membership.plan_id if active_membership else None, membership_info.is_active)
+    if slot_id > max_slots:
+        return StartCheckResponse(
+            can_start=False,
+            reason=f"当前套餐最多可使用 {max_slots} 个微信任务配置",
+            membership=membership_info,
+            trial=trial_info,
+        )
+
+    running_task = (
+        db.query(Task)
+        .filter(Task.user_id == user.id, Task.slot_id == slot_id, Task.status == "running")
+        .first()
+    )
+    if running_task:
+        return StartCheckResponse(
+            can_start=False,
+            reason=f"微信{slot_id}任务正在运行，请先停止后再启动",
+            membership=membership_info,
+            trial=trial_info,
+        )
+
     task = Task(
         user_id=user.id,
         device_id=device_id,
+        slot_id=slot_id,
         daily_limit=daily_limit,
         create_tag=create_tag,
         greeting_text=greeting_text,
@@ -134,6 +175,7 @@ def finish_task(task_id: int, user: User, db: Session) -> TaskResponse:
         id=task.id,
         user_id=task.user_id,
         device_id=task.device_id,
+        slot_id=task.slot_id,
         daily_limit=task.daily_limit,
         create_tag=task.create_tag,
         greeting_text=task.greeting_text,

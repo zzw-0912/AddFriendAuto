@@ -33,6 +33,7 @@ GREETING_KEYWORDS = ["输入申请语", "申请语"]
 VALIDATION_KEYWORDS = ["判断是否输入正确", "输入正确"]
 CONFIRM_CLICK_KEYWORDS = ["点击确定", "确定"]
 KEY_FAILURE_KEYWORDS = ["发送添加好友申请", "添加到通讯录", "输入申请语"]
+WECHAT_START_KEYWORDS = ["微信", "添加朋友", "申请添加朋友"]
 BOOTSTRAP_MAX_ATTEMPTS = 2
 BOOTSTRAP_RETRY_MAX_SECONDS = 8.0
 BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
@@ -294,6 +295,43 @@ def extract_phone_pool(nodes: dict[str, dict[str, Any]], phone_input_ids: list[s
     return []
 
 
+def parse_wechat_binding(task_config: dict[str, Any]) -> dict[str, Any] | None:
+    raw = task_config.get("wechat_binding") or task_config.get("wechatBinding")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        hwnd = int(raw.get("hwnd") or 0)
+        pid = int(raw.get("pid") or 0)
+    except Exception:
+        return None
+    title = str(raw.get("title") or "微信").strip() or "微信"
+    display_name = str(raw.get("displayName") or raw.get("display_name") or title).strip()
+    if hwnd <= 0 or pid <= 0:
+        return None
+    return {"hwnd": hwnd, "pid": pid, "title": title, "display_name": display_name}
+
+
+def apply_wechat_binding(nodes: dict[str, dict[str, Any]], node_ids: list[str], binding: dict[str, Any]) -> int:
+    patched = 0
+    for node_id in node_ids:
+        node = nodes[node_id]
+        if node_type(node) != "StartNode":
+            continue
+        config = get_config(node)
+        title = str(config.get("window_title") or "")
+        if not config.get("bind_window") or not contains_any(title, WECHAT_START_KEYWORDS):
+            continue
+
+        config["window_pid"] = binding["pid"]
+        if contains_any(title, ["微信"]):
+            config["window_hwnd"] = binding["hwnd"]
+            config["window_title"] = binding["title"]
+        else:
+            config.pop("window_hwnd", None)
+        patched += 1
+    return patched
+
+
 def patch_single_account(tree_data: dict[str, Any]) -> int:
     nodes = tree_data.get("nodes", {})
     root_id = tree_data.get("root_node")
@@ -380,13 +418,23 @@ def patch_skip_tag_flow(tree_data: dict[str, Any], node_ids: list[str], greeting
             set_node_enabled(node, False)
 
 
-def patch_tree(tree_file: Path, daily_limit: int, create_tag: bool, greeting_text: str) -> dict[str, Any]:
+def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
     with tree_file.open("r", encoding="utf-8") as f:
         tree_data = json.load(f)
 
     nodes: dict[str, dict[str, Any]] = tree_data.get("nodes", {})
+    slot_id = int(task_config.get("slot_id") or 1)
+    binding = parse_wechat_binding(task_config)
+    if slot_id > 1 and not binding:
+        raise RuntimeError(f"微信{slot_id}未绑定有效窗口，请先在客户端绑定微信窗口")
+
     disabled_accounts = patch_single_account(tree_data)
     active_ids = reachable_enabled_ids(nodes, tree_data.get("root_node"))
+    if binding:
+        patched_windows = apply_wechat_binding(nodes, active_ids, binding)
+        if patched_windows == 0:
+            raise RuntimeError("AutoDoor 项目中没有找到可绑定的微信开始节点")
+        active_ids = reachable_enabled_ids(nodes, tree_data.get("root_node"))
 
     phone_input_ids = [
         node_id
@@ -399,7 +447,7 @@ def patch_tree(tree_file: Path, daily_limit: int, create_tag: bool, greeting_tex
     if not phone_pool:
         raise RuntimeError("AutoDoor 项目中没有找到手机号输入节点或手机号池")
 
-    limit = max(1, min(int(daily_limit or 1), len(phone_pool)))
+    limit = max(1, min(int(task_config.get("daily_limit") or 1), len(phone_pool)))
     phone_numbers = phone_pool[:limit]
 
     for node_id in phone_input_ids:
@@ -411,7 +459,8 @@ def patch_tree(tree_file: Path, daily_limit: int, create_tag: bool, greeting_tex
         config["save_input_text"] = True
         config["output_key"] = "last_input_text"
 
-    clear_start_window_handles(nodes, active_ids)
+    if not binding:
+        clear_start_window_handles(nodes, active_ids)
 
     root_id = tree_data.get("root_node")
     if root_id in nodes:
@@ -419,8 +468,8 @@ def patch_tree(tree_file: Path, daily_limit: int, create_tag: bool, greeting_tex
         root_config["repeat_count"] = max(0, len(phone_numbers) - 1)
         root_config.setdefault("repeat_interval_ms", "2000")
 
-    greeting_ids = patch_greeting(tree_data, active_ids, greeting_text.strip())
-    if not create_tag:
+    greeting_ids = patch_greeting(tree_data, active_ids, str(task_config.get("greeting_text") or "").strip())
+    if not bool(task_config.get("create_tag")):
         patch_skip_tag_flow(tree_data, active_ids, greeting_ids)
         active_ids = reachable_enabled_ids(nodes, root_id)
 
@@ -482,9 +531,7 @@ def prepare_run(config: AutoDoorConfig, task_config: dict[str, Any]) -> Prepared
 
     patched = patch_tree(
         tree_file=tree_file,
-        daily_limit=int(task_config.get("daily_limit") or 1),
-        create_tag=bool(task_config.get("create_tag")),
-        greeting_text=str(task_config.get("greeting_text") or ""),
+        task_config=task_config,
     )
 
     return PreparedRun(

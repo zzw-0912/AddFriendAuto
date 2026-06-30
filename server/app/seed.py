@@ -28,6 +28,18 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE tasks ADD COLUMN slot_id INTEGER NOT NULL DEFAULT 1"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("CREATE INDEX ix_tasks_user_slot_status ON tasks (user_id, slot_id, status)"))
+                conn.commit()
+        except Exception:
+            pass
 
     if "sqlite" in str(engine.url):
         try:

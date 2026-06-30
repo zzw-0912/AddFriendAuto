@@ -411,7 +411,7 @@ def list_tasks(page: int, page_size: int, status_filter: str | None, db: Session
         s = stats_map.get(t.id, {"success": 0, "failed": 0, "invalid": 0})
         items.append(TaskListItem(
             id=t.id, user_id=t.user_id, email=users_map.get(t.user_id),
-            device_id=t.device_id, daily_limit=t.daily_limit,
+            device_id=t.device_id, slot_id=t.slot_id, daily_limit=t.daily_limit,
             status=t.status, started_at=t.started_at, finished_at=t.finished_at,
             success_count=s["success"], failed_count=s["failed"], invalid_count=s["invalid"],
         ))

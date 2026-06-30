@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNetworkStatus } from "./useNetworkStatus";
+import { loadTaskSlotConfig, loadWeChatBindings, saveTaskSlotConfig } from "./localSettings";
 import type { TaskDefaults, UserStatus } from "./types";
 
 interface Props {
   apiBase: string;
   token: string;
   status: UserStatus | null;
+  slotId: number;
   taskDefaults: TaskDefaults;
   taskDefaultsVersion: number;
   onStatusChange: () => void;
@@ -15,6 +17,7 @@ interface Props {
 
 interface ScriptEvent {
   run_id?: string;
+  slot_id?: number;
   contact_id?: string | number;
   event: string;
   message?: string;
@@ -38,11 +41,11 @@ const BOOT_STEPS = [
   "规避高频访问识别探针",
 ];
 
-function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, onStatusChange }: Props) {
+function TaskPanel({ apiBase, token, status, slotId, taskDefaults, taskDefaultsVersion, onStatusChange }: Props) {
   const { isOnline } = useNetworkStatus();
-  const [dailyLimit, setDailyLimit] = useState(taskDefaults.dailyLimit);
-  const [createTag, setCreateTag] = useState(taskDefaults.createTag);
-  const [greetingText, setGreetingText] = useState(taskDefaults.greetingText);
+  const [dailyLimit, setDailyLimit] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).dailyLimit);
+  const [createTag, setCreateTag] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).createTag);
+  const [greetingText, setGreetingText] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingText);
   const [isRunning, setIsRunning] = useState(false);
   const [, setTaskId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -95,6 +98,11 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   const handleScriptEvent = useCallback((event: { payload: string }) => {
     try {
       const data: ScriptEvent = JSON.parse(event.payload);
+      const currentRunId = taskIdRef.current ? String(taskIdRef.current) : "";
+      const eventRunId = data.run_id ? String(data.run_id) : "";
+      if (data.slot_id && data.slot_id !== slotId) return;
+      if (eventRunId && currentRunId && eventRunId !== currentRunId) return;
+      if (eventRunId && !currentRunId) return;
 
       if (data.event === "exited") {
         addLog("脚本进程已退出", "info");
@@ -152,7 +160,7 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
     } catch {
       addLog(`收到脚本输出: ${event.payload}`, "normal");
     }
-  }, [addLog, finishCurrentTask, reportResult]);
+  }, [addLog, finishCurrentTask, reportResult, slotId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,14 +198,26 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
 
   useEffect(() => {
     if (isRunning) return;
-    setDailyLimit(taskDefaults.dailyLimit);
-    setCreateTag(taskDefaults.createTag);
-    setGreetingText(taskDefaults.greetingText);
-  }, [isRunning, taskDefaults.dailyLimit, taskDefaults.createTag, taskDefaults.greetingText, taskDefaultsVersion]);
+    const slotConfig = loadTaskSlotConfig(slotId, taskDefaults);
+    setDailyLimit(slotConfig.dailyLimit);
+    setCreateTag(slotConfig.createTag);
+    setGreetingText(slotConfig.greetingText);
+  }, [isRunning, slotId, taskDefaults, taskDefaultsVersion]);
+
+  useEffect(() => {
+    if (isRunning) return;
+    saveTaskSlotConfig(slotId, { dailyLimit, createTag, greetingText });
+  }, [createTag, dailyLimit, greetingText, isRunning, slotId]);
 
   const handleStart = async () => {
     if (!isOnline) {
       addLog("无法启动：网络连接已断开", "error");
+      return;
+    }
+
+    const wechatBinding = loadWeChatBindings()[String(slotId)];
+    if (!wechatBinding) {
+      addLog(`无法启动：请先在“我的”页面绑定微信${slotId}窗口`, "error");
       return;
     }
 
@@ -206,11 +226,17 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
     processedResultKeysRef.current.clear();
 
     try {
+      const bindingAlive = await invoke<boolean>("validate_wechat_binding", { binding: wechatBinding });
+      if (!bindingAlive) {
+        addLog(`无法启动：微信${slotId}绑定窗口已失效，请重新绑定`, "error");
+        return;
+      }
+
       addLog("正在校验会员状态...", "info");
       const res = await fetch(`${apiBase}/tasks/start-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ daily_limit: dailyLimit, create_tag: createTag, greeting_text: greetingText || null }),
+        body: JSON.stringify({ slot_id: slotId, daily_limit: dailyLimit, create_tag: createTag, greeting_text: greetingText || null }),
       });
       const data = await res.json();
       if (!res.ok || !data.can_start) {
@@ -226,13 +252,15 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
       const config = {
         run_id: String(data.task_id),
         task_id: data.task_id,
+        slot_id: slotId,
         daily_limit: dailyLimit,
         create_tag: createTag,
         greeting_text: greetingText,
+        wechat_binding: wechatBinding,
         contacts: [],
       };
 
-      addLog("正在启动脚本...", "info");
+      addLog(`正在启动脚本，目标窗口：${wechatBinding.displayName}`, "info");
       await invoke("start_task", { configJson: JSON.stringify(config) });
     } catch (e: any) {
       addLog(`启动失败: ${e}`, "error");
@@ -243,7 +271,8 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
   const handleStop = async () => {
     addLog("正在停止任务...", "info");
     try {
-      await invoke("stop_task");
+      const runId = taskIdRef.current ? String(taskIdRef.current) : "";
+      if (runId) await invoke("stop_task", { runId });
     } catch { /* ignore */ }
     await finishCurrentTask();
     addLog("任务已停止", "info");
@@ -253,7 +282,7 @@ function TaskPanel({ apiBase, token, status, taskDefaults, taskDefaultsVersion, 
     <div className="task-panel">
       {/* Config section */}
       <div className="section-card">
-        <h3 className="section-title">任务配置</h3>
+        <h3 className="section-title">微信{slotId}任务配置</h3>
         <div className="task-config">
           <div className="config-row">
             <div className="field">

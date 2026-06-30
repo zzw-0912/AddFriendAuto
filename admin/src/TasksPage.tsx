@@ -49,6 +49,7 @@ function TasksPage() {
               <tr>
                 <th>ID</th>
                 <th>用户</th>
+                <th>微信</th>
                 <th>每日限额</th>
                 <th>状态</th>
                 <th>成功/失败/无效</th>
@@ -62,6 +63,7 @@ function TasksPage() {
                 <tr key={t.id}>
                   <td>{t.id}</td>
                   <td>{t.email || `#${t.user_id}`}</td>
+                  <td>微信{t.slot_id}</td>
                   <td>{t.daily_limit}</td>
                   <td><span className={`badge ${t.status === "running" ? "badge-warn" : "badge-active"}`}>{t.status}</span></td>
                   <td>{t.success_count}/{t.failed_count}/{t.invalid_count}</td>

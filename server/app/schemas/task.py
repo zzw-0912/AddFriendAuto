@@ -7,6 +7,7 @@ from app.schemas.status import MembershipInfo, TrialInfo
 
 
 class StartCheckRequest(BaseModel):
+    slot_id: int = Field(default=1, ge=1, le=3)
     daily_limit: int = Field(default=20, ge=1, le=200)
     create_tag: bool = False
     greeting_text: str | None = Field(default=None, max_length=500)
@@ -30,6 +31,7 @@ class TaskResponse(BaseModel):
     id: int
     user_id: int
     device_id: int
+    slot_id: int
     daily_limit: int
     create_tag: bool
     greeting_text: str | None

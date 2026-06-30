@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { readErrorDetail, getSavedAccounts, saveAccount, removeAccount } from "./api";
 import type { StoredAccount } from "./api";
+import { loadWeChatBindings, saveWeChatBindings } from "./localSettings";
 import { useSendCode } from "./useSendCode";
-import type { UserStatus } from "./types";
+import type { UserStatus, WeChatWindowBinding, WeChatWindowInfo } from "./types";
 
 interface Props {
   apiBase: string;
@@ -87,6 +89,10 @@ function ProfilePage({
   const [resetLoading, setResetLoading] = useState(false);
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [savedAccounts, setSavedAccounts] = useState<StoredAccount[]>([]);
+  const [wechatWindows, setWeChatWindows] = useState<WeChatWindowInfo[]>([]);
+  const [wechatBindings, setWeChatBindings] = useState<Record<string, WeChatWindowBinding>>(() => loadWeChatBindings());
+  const [wechatSelections, setWeChatSelections] = useState<Record<string, string>>({});
+  const [wechatLoading, setWeChatLoading] = useState(false);
 
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -99,6 +105,57 @@ function ProfilePage({
   const { countdown, send } = useSendCode(apiBase, showToast);
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  const refreshWeChatWindows = useCallback(async () => {
+    setWeChatLoading(true);
+    try {
+      const windows = await invoke<WeChatWindowInfo[]>("list_wechat_windows");
+      setWeChatWindows(windows);
+      if (windows.length === 0) {
+        showToast("未找到已打开的微信窗口");
+      }
+    } catch (err) {
+      showToast(String(err || "微信窗口刷新失败"));
+    } finally {
+      setWeChatLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    refreshWeChatWindows();
+  }, [refreshWeChatWindows]);
+
+  const handleBindWeChat = (slotId: number) => {
+    const selection = wechatSelections[String(slotId)];
+    const selectedWindow = wechatWindows.find((window) => `${window.pid}:${window.hwnd}` === selection);
+    if (!selectedWindow) {
+      showToast(`请先选择微信${slotId}窗口`);
+      return;
+    }
+
+    const nextBindings = {
+      ...wechatBindings,
+      [String(slotId)]: {
+        slotId,
+        hwnd: selectedWindow.hwnd,
+        pid: selectedWindow.pid,
+        title: selectedWindow.title,
+        displayName: selectedWindow.displayName,
+        boundAt: new Date().toISOString(),
+      },
+    };
+    setWeChatBindings(nextBindings);
+    saveWeChatBindings(nextBindings);
+    showToast(`微信${slotId}已绑定`);
+  };
+
+  const handleClearWeChatBinding = (slotId: number) => {
+    const nextBindings = { ...wechatBindings };
+    delete nextBindings[String(slotId)];
+    setWeChatBindings(nextBindings);
+    saveWeChatBindings(nextBindings);
+    showToast(`微信${slotId}绑定已清除`);
+  };
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -386,6 +443,54 @@ function ProfilePage({
           >
             切换账号
           </button>
+        </div>
+      </div>
+
+      {/* WeChat Binding Card */}
+      <div className="profile-card settings-card">
+        <div className="profile-card-header compact">
+          <div>
+            <h4 className="profile-card-title">微信窗口绑定</h4>
+            <p className="profile-card-desc">每个任务配置固定使用对应微信窗口</p>
+          </div>
+          <button type="button" className="settings-secondary-btn" onClick={refreshWeChatWindows} disabled={wechatLoading}>
+            {wechatLoading ? "刷新中..." : "刷新窗口"}
+          </button>
+        </div>
+
+        <div className="wechat-bind-list">
+          {[1, 2, 3].map((slotId) => {
+            const binding = wechatBindings[String(slotId)];
+            return (
+              <div className="wechat-bind-row" key={slotId}>
+                <div className="wechat-bind-meta">
+                  <strong>微信{slotId}</strong>
+                  <span>{binding ? binding.displayName : "未绑定"}</span>
+                  {binding && <small>绑定时间 {formatDate(binding.boundAt)}</small>}
+                </div>
+                <select
+                  className="input wechat-bind-select"
+                  value={wechatSelections[String(slotId)] || ""}
+                  onChange={(e) => setWeChatSelections((prev) => ({ ...prev, [String(slotId)]: e.target.value }))}
+                >
+                  <option value="">选择已打开的微信窗口</option>
+                  {wechatWindows.map((window) => (
+                    <option key={`${window.pid}:${window.hwnd}`} value={`${window.pid}:${window.hwnd}`}>
+                      {window.displayName}
+                    </option>
+                  ))}
+                </select>
+                <div className="wechat-bind-actions">
+                  <button type="button" className="settings-primary-btn" onClick={() => handleBindWeChat(slotId)}>
+                    绑定
+                  </button>
+                  <button type="button" className="settings-secondary-btn" onClick={() => handleClearWeChatBinding(slotId)} disabled={!binding}>
+                    清除
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
