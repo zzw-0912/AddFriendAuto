@@ -19,10 +19,12 @@ DEFAULT_PLANS = [
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    is_sqlite = engine.dialect.name == "sqlite"
+    if is_sqlite:
+        Base.metadata.create_all(bind=engine)
 
     # Add columns to existing tables if missing (SQLite compat)
-    if "sqlite" in str(engine.url):
+    if is_sqlite:
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
@@ -48,7 +50,7 @@ def init_db():
         except Exception:
             pass
 
-    if "sqlite" in str(engine.url):
+    if is_sqlite:
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN referral_code VARCHAR(16)"))

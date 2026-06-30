@@ -279,8 +279,8 @@ def rebind_device(device_id: int, new_user_id: int, admin_user_id: int, db: Sess
     if not new_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="New user not found")
 
-    existing = db.query(Device).filter(Device.user_id == new_user_id, Device.id != device_id).first()
-    if existing:
+    existing_devices = db.query(Device).filter(Device.user_id == new_user_id, Device.id != device_id).all()
+    for existing in existing_devices:
         db.delete(existing)
 
     old_user_id = device.user_id

@@ -27,9 +27,23 @@ def _resolve_database_url(url: str) -> str:
 
 database_url = _resolve_database_url(settings.database_url)
 
+
+def _engine_kwargs(url: str) -> dict:
+    if "sqlite" in url:
+        return {"connect_args": {"check_same_thread": False}}
+
+    kwargs = {
+        "pool_pre_ping": True,
+        "pool_recycle": 3600,
+    }
+    if url.startswith("mysql"):
+        kwargs["connect_args"] = {"charset": "utf8mb4"}
+    return kwargs
+
+
 engine = create_engine(
     database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in database_url else {},
+    **_engine_kwargs(database_url),
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

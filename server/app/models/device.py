@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
 
 from app.core.database import Base
 
 
 class Device(Base):
     __tablename__ = "devices"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_devices_user_id"),)
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=False, index=True)

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
@@ -26,7 +27,7 @@ def allowed_slot_count(plan_id: int | None, has_membership: bool) -> int:
     return 1
 
 
-def finish_stale_running_tasks(user_id: int, slot_id: int, db: Session) -> None:
+def finish_stale_running_tasks(user_id: int, slot_id: int, db: Session) -> bool:
     stale_before = datetime.utcnow() - timedelta(hours=STALE_RUNNING_TASK_HOURS)
     stale_tasks = (
         db.query(Task)
@@ -39,13 +40,14 @@ def finish_stale_running_tasks(user_id: int, slot_id: int, db: Session) -> None:
         .all()
     )
     if not stale_tasks:
-        return
+        return False
 
     finished_at = datetime.now(timezone.utc)
     for task in stale_tasks:
         task.status = "finished"
         task.finished_at = finished_at
-    db.commit()
+    db.flush()
+    return True
 
 
 def start_check(
@@ -56,6 +58,8 @@ def start_check(
     greeting_text: str | None,
     db: Session,
 ) -> StartCheckResponse:
+    db.query(User).filter(User.id == user.id).with_for_update().first()
+
     device = db.query(Device).filter(Device.user_id == user.id, Device.status == "active").first()
     device_id = device.id if device else 0
 
@@ -105,7 +109,7 @@ def start_check(
             trial=trial_info,
         )
 
-    finish_stale_running_tasks(user.id, slot_id, db)
+    stale_tasks_finished = finish_stale_running_tasks(user.id, slot_id, db)
 
     running_task = (
         db.query(Task)
@@ -113,6 +117,8 @@ def start_check(
         .first()
     )
     if running_task:
+        if stale_tasks_finished:
+            db.commit()
         return StartCheckResponse(
             can_start=False,
             reason=f"微信{slot_id}任务正在运行，请先停止后再启动",
@@ -142,7 +148,7 @@ def start_check(
 
 
 def report_result(task_id: int, contact_id: int, event: str, message: str, user: User, db: Session) -> dict:
-    task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).with_for_update().first()
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     if task.status != "running":
@@ -158,7 +164,7 @@ def report_result(task_id: int, contact_id: int, event: str, message: str, user:
 
     charged = False
     if event == "success":
-        quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).first()
+        quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).with_for_update().first()
         if quota and quota.remaining_count > 0:
             active_membership = (
                 db.query(Membership)
@@ -183,7 +189,18 @@ def report_result(task_id: int, contact_id: int, event: str, message: str, user:
         trial_charged=charged,
     )
     db.add(result)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = (
+            db.query(TaskResult)
+            .filter(TaskResult.task_id == task_id, TaskResult.contact_id == contact_id)
+            .first()
+        )
+        if existing:
+            return {"charged": existing.trial_charged, "duplicate": True}
+        raise
 
     return {"charged": charged, "duplicate": False}
 
