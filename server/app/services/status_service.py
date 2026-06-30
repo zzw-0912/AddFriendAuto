@@ -28,6 +28,20 @@ def get_user_status(user: User, db: Session) -> UserStatusResponse:
             starts_at=active_membership.starts_at,
             ends_at=active_membership.ends_at,
         )
+    else:
+        latest_membership = (
+            db.query(Membership)
+            .filter(Membership.user_id == user.id)
+            .order_by(Membership.ends_at.desc())
+            .first()
+        )
+        if latest_membership:
+            membership_info = MembershipInfo(
+                is_active=False,
+                plan_id=latest_membership.plan_id,
+                starts_at=latest_membership.starts_at,
+                ends_at=latest_membership.ends_at,
+            )
 
     # Trial quota
     quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).first()

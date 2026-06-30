@@ -7,6 +7,7 @@ interface Props {
   token: string;
   userEmail: string;
   trialRemaining: number;
+  canSkipTrial?: boolean;
   onClose: () => void;
   onSkipTrial: () => void;
 }
@@ -38,7 +39,7 @@ const planFeatures: Record<string, string[]> = {
 
 const planOrder = ["月卡", "季卡", "年卡"];
 
-function PaymentModal({ apiBase, token, userEmail, trialRemaining, onClose, onSkipTrial }: Props) {
+function PaymentModal({ apiBase, token, userEmail, trialRemaining, canSkipTrial = true, onClose, onSkipTrial }: Props) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [showQR, setShowQR] = useState(false);
@@ -175,9 +176,11 @@ function PaymentModal({ apiBase, token, userEmail, trialRemaining, onClose, onSk
             <button className="btn-primary" disabled={!selectedPlanId || creatingOrder} onClick={handleCreateManualOrder}>
               {creatingOrder ? "正在创建订单..." : "联系工作人员充值"}
             </button>
-            <a href="#" className="skip-link" onClick={handleSkip}>
-              跳过，<strong>开始试用</strong>
-            </a>
+            {canSkipTrial && (
+              <a href="#" className="skip-link" onClick={handleSkip}>
+                跳过，<strong>开始试用</strong>
+              </a>
+            )}
           </div>
           {orderError && <div className="pay-error">{orderError}</div>}
         </div>

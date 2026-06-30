@@ -78,6 +78,18 @@ function getGreeting() {
   return "晚上好";
 }
 
+function isMembershipExpired(status: UserStatus | null) {
+  if (!status || status.membership.is_active || !status.membership.ends_at) return false;
+  const endsAt = new Date(status.membership.ends_at).getTime();
+  return Number.isFinite(endsAt) && endsAt <= Date.now();
+}
+
+function shouldPromptPayment(status: UserStatus | null) {
+  if (!status) return false;
+  if (status.membership.is_active) return false;
+  return status.trial.remaining <= 0 || isMembershipExpired(status);
+}
+
 function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Props) {
   const { isOffline } = useNetworkStatus();
   const [status, setStatus] = useState<UserStatus | null>(null);
@@ -123,6 +135,14 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
   const planId = status?.membership.plan_id;
   const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+  const membershipExpired = isMembershipExpired(status);
+  const canSkipTrialPayment = (status?.trial.remaining ?? 0) > 0 && !membershipExpired;
+
+  useEffect(() => {
+    if (shouldPromptPayment(status)) {
+      setShowPayment(true);
+    }
+  }, [status]);
 
   const renderMainContent = () => {
     if (activeNav === "我的") {
@@ -315,7 +335,12 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
                   <span>会员有效至 {formatDate(status.membership.ends_at)}</span>
                 </div>
               )}
-              {(!status || !status.membership.is_active) && (
+              {membershipExpired ? (
+                <div className="status-badge trial">
+                  <span className="dot" />
+                  <span>会员已过期</span>
+                </div>
+              ) : (!status || !status.membership.is_active) && (
                 <div className="status-badge trial">
                   <span className="dot" />
                   <span>剩余试用 {status?.trial.remaining ?? 20} 次</span>
@@ -337,6 +362,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               token={auth.token}
               userEmail={auth.email}
               trialRemaining={status?.trial.remaining ?? 0}
+              canSkipTrial={canSkipTrialPayment}
               onClose={() => setShowPayment(false)}
               onSkipTrial={() => setShowPayment(false)}
             />

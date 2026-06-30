@@ -11,6 +11,13 @@ from app.models.plan import Plan
 from app.models.user import User
 
 
+DEFAULT_PLANS = [
+    {"name": "月卡", "duration_days": 30, "price_cents": 30000, "enabled": True},
+    {"name": "季卡", "duration_days": 90, "price_cents": 50000, "enabled": True},
+    {"name": "年卡", "duration_days": 365, "price_cents": 80000, "enabled": True},
+]
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
@@ -64,13 +71,16 @@ def init_db():
         if users_missing:
             db.commit()
 
-        if not db.query(Plan).first():
-            plans = [
-                Plan(name="月卡", duration_days=30, price_cents=2999, enabled=True),
-                Plan(name="季卡", duration_days=90, price_cents=6999, enabled=True),
-                Plan(name="年卡", duration_days=365, price_cents=19999, enabled=True),
-            ]
-            db.add_all(plans)
+        existing_plans = {plan.name: plan for plan in db.query(Plan).all()}
+        for defaults in DEFAULT_PLANS:
+            plan = existing_plans.get(defaults["name"])
+            if plan:
+                plan.duration_days = defaults["duration_days"]
+                plan.price_cents = defaults["price_cents"]
+                plan.enabled = defaults["enabled"]
+            else:
+                db.add(Plan(**defaults))
+        if DEFAULT_PLANS:
             db.commit()
 
         if not db.query(AdminUser).first():

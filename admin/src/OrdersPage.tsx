@@ -2,6 +2,34 @@ import { useCallback, useEffect, useState } from "react";
 import { confirmOrderPayment, getOrders } from "./api";
 import type { OrderListItem, PageResponse } from "./api";
 
+const orderStatusText: Record<string, string> = {
+  pending: "待支付",
+  paid: "已支付",
+  expired: "已过期",
+  cancelled: "已取消",
+  canceled: "已取消",
+};
+
+const paymentChannelText: Record<string, string> = {
+  manual_wechat: "人工微信",
+  wechat: "微信支付",
+  alipay: "支付宝",
+};
+
+function formatAmount(amountCents: number) {
+  const amountYuan = amountCents / 100;
+  return `¥${amountYuan.toFixed(amountCents % 100 === 0 ? 0 : 2)}`;
+}
+
+function formatOrderStatus(status: string) {
+  return orderStatusText[status] ?? status;
+}
+
+function formatPaymentChannel(channel?: string | null) {
+  if (!channel) return "-";
+  return paymentChannelText[channel] ?? channel;
+}
+
 function OrdersPage() {
   const [data, setData] = useState<PageResponse<OrderListItem> | null>(null);
   const [page, setPage] = useState(1);
@@ -62,7 +90,7 @@ function OrdersPage() {
             <th>ID</th>
             <th>订单号</th>
             <th>用户</th>
-            <th>金额(分)</th>
+            <th>金额</th>
             <th>支付方式</th>
             <th>状态</th>
             <th>支付时间</th>
@@ -76,9 +104,9 @@ function OrdersPage() {
               <td>{o.id}</td>
               <td className="mono">{o.order_no}</td>
               <td>{o.email || `#${o.user_id}`}</td>
-              <td>{o.amount_cents}</td>
-              <td>{o.payment_channel || "-"}</td>
-              <td><span className={`badge ${o.status === "paid" ? "badge-active" : o.status === "pending" ? "badge-warn" : "badge-inactive"}`}>{o.status}</span></td>
+              <td>{formatAmount(o.amount_cents)}</td>
+              <td>{formatPaymentChannel(o.payment_channel)}</td>
+              <td><span className={`badge ${o.status === "paid" ? "badge-active" : o.status === "pending" ? "badge-warn" : "badge-inactive"}`}>{formatOrderStatus(o.status)}</span></td>
               <td>{o.paid_at?.slice(0, 19).replace("T", " ") || "-"}</td>
               <td>{o.created_at?.slice(0, 19).replace("T", " ")}</td>
               <td>

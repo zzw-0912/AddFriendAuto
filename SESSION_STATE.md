@@ -5,6 +5,8 @@
 远程仓库：`git@github.com:zzw-0912/AddFriendAuto.git`  
 本轮主题：多任务配置绑定独立微信窗口
 
+最新补充：会员套餐价格调整为月卡 300 元、季卡 500 元、年卡 800 元；试用次数用完或会员过期后，桌面端会自动弹出充值窗口；管理后台订单金额和套餐价格按“元”展示，订单状态和支付方式展示为中文。
+
 > 下次新会话优先读取本文件。历史文件 `SESSION_SUMMARY.md` 只作归档入口；若历史摘要和当前实现冲突，以本文件和代码为准。
 
 ## 1. 本轮需求
@@ -74,6 +76,7 @@
 - `task_service.start_check` 会检查套餐 slot 权限。
 - 同一用户同一 slot 已有 running 任务时，拒绝重复启动。
 - `seed.py` 增加本地 SQLite 兼容补列逻辑，避免旧库缺少 `slot_id`。
+- `seed.py` 会按套餐名称同步默认套餐价格：月卡 300 元、季卡 500 元、年卡 800 元，并会更新已有旧价格。
 - `server/alembic/env.py` 调整为使用应用配置里的数据库 URL，确保迁移目标一致。
 
 ### Worker / AutoDoor
@@ -118,6 +121,8 @@
 - `server/app/api/tasks.py`：传递 `slot_id`。
 - `server/app/services/task_service.py`：套餐 slot 权限和同 slot running 防重。
 - `server/app/services/task_service.py`：启动检查前会自动收尾同用户同 slot 超过 12 小时的 stale running 任务，避免异常退出后永久卡住。
+- `server/app/services/status_service.py`：无有效会员时仍会返回最近会员记录的 `ends_at`，供前端判断“会员已过期”并触发充值弹窗。
+- `server/app/seed.py`：套餐价格同步为月卡 300 元、季卡 500 元、年卡 800 元。
 - `server/app/schemas/admin.py`、`server/app/services/admin_service.py`：后台任务展示 slot。
 - `server/app/seed.py`：本地 SQLite 补列和索引兼容。
 - `server/alembic/env.py`：迁移数据库 URL 修正。
@@ -127,6 +132,13 @@
 
 - `admin/src/api.ts`：任务类型增加 `slot_id`。
 - `admin/src/TasksPage.tsx`：任务列表展示 slot 来源。
+- `admin/src/OrdersPage.tsx`：订单金额从分格式化为元展示，支付方式和订单状态展示中文。
+- `admin/src/PlansPage.tsx`：套餐价格按元显示和编辑，保存时仍转换为后端 `price_cents`。
+
+### 充值弹窗
+
+- `desktop/src/MainPage.tsx`：当会员不活跃且试用次数为 0，或最近会员到期时间已过期时，自动打开充值弹窗。
+- `desktop/src/PaymentModal.tsx`：自动充值场景下无可用试用资格时隐藏“跳过，开始试用”。
 
 ## 5. 架构思路
 
@@ -165,6 +177,14 @@ flowchart LR
 - 本轮修复 stale running 和恢复默认输入后已确认本地 SQLite 无 remaining `running` 任务
 - 本轮针对多窗口并发修复后已再次执行 `cargo check` in `desktop/src-tauri`
 - 本轮实现全局自动化执行队列后已再次执行 `python -m py_compile scripts\platform_worker.py`
+- 本轮调整价格和充值弹窗后已执行 `python -m compileall app` in `server`
+- 本轮调整价格和充值弹窗后已执行 `npm run build` in `desktop`
+- 本轮调整价格和充值弹窗后已执行 `npm run lint` in `desktop`
+- 本轮调整管理后台订单/套餐展示后已执行 `npm run build` in `admin`
+- 本轮已执行 `python -m app.seed`，本地 `server/friendauto.db` 中套餐价格已确认：
+  - 月卡：30000 分
+  - 季卡：50000 分
+  - 年卡：80000 分
 - 临时 SQLite 执行 `alembic upgrade head`
 - 本地 `server/friendauto.db` 已确认存在：
   - `tasks.slot_id`

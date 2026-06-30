@@ -2,6 +2,17 @@ import { useEffect, useState } from "react";
 import { getPlans, updatePlan } from "./api";
 import type { PlanItem } from "./api";
 
+function formatPriceYuan(priceCents: number) {
+  const priceYuan = priceCents / 100;
+  return priceYuan.toFixed(priceCents % 100 === 0 ? 0 : 2);
+}
+
+function parsePriceCents(value: string) {
+  const priceYuan = Number(value.trim());
+  if (!Number.isFinite(priceYuan) || priceYuan < 0) return null;
+  return Math.round(priceYuan * 100);
+}
+
 function PlansPage() {
   const [plans, setPlans] = useState<PlanItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +48,7 @@ function PlansPage() {
             <th>ID</th>
             <th>名称</th>
             <th>天数</th>
-            <th>价格(分)</th>
+            <th>价格(元)</th>
             <th>状态</th>
             <th>操作</th>
           </tr>
@@ -53,7 +64,22 @@ function PlansPage() {
                 <input type="number" defaultValue={p.duration_days} onBlur={(e) => { const v = parseInt(e.target.value); if (v > 0 && v !== p.duration_days) handleSave(p.id, "duration_days", v); }} />
               </td>
               <td>
-                <input type="number" defaultValue={p.price_cents} onBlur={(e) => { const v = parseInt(e.target.value); if (v >= 0 && v !== p.price_cents) handleSave(p.id, "price_cents", v); }} />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={formatPriceYuan(p.price_cents)}
+                  onBlur={(e) => {
+                    const v = parsePriceCents(e.target.value);
+                    if (v === null) {
+                      e.target.value = formatPriceYuan(p.price_cents);
+                      setMsg("请输入有效价格（元）");
+                      return;
+                    }
+                    e.target.value = formatPriceYuan(v);
+                    if (v !== p.price_cents) handleSave(p.id, "price_cents", v);
+                  }}
+                />
               </td>
               <td>
                 <span className={`badge ${p.enabled ? "badge-active" : "badge-inactive"}`}>
