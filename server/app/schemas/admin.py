@@ -112,6 +112,7 @@ class TaskListItem(BaseModel):
     email: str | None = None
     device_id: int
     slot_id: int = 1
+    target_type: str = "phone"
     daily_limit: int
     status: str
     started_at: datetime
@@ -123,6 +124,8 @@ class TaskListItem(BaseModel):
 
 class TaskResultItem(BaseModel):
     id: int
+    target_id: int | None = None
+    target_type: str | None = None
     contact_id: int | None = None
     result: str
     message: str | None = None

@@ -43,6 +43,7 @@ interface SettingsPageProps {
 
 function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
   return {
+    targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
     createTag: Boolean(defaults.createTag),
     greetingText: defaults.greetingText.trim(),

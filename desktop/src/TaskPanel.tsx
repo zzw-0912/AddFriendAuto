@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNetworkStatus } from "./useNetworkStatus";
 import { loadTaskSlotConfig, loadWeChatBindings, saveTaskSlotConfig } from "./localSettings";
-import type { TaskDefaults, UserStatus } from "./types";
+import type { TargetType, TaskDefaults, UserStatus } from "./types";
 
 interface Props {
   apiBase: string;
@@ -20,10 +20,27 @@ interface Props {
 interface ScriptEvent {
   run_id?: string;
   slot_id?: number;
+  target_id?: string | number;
+  target_type?: TargetType;
   contact_id?: string | number;
   event: string;
   message?: string;
   timestamp?: string;
+}
+
+interface TaskTarget {
+  target_id: number;
+  target_type: TargetType;
+  target_value: string;
+  masked_value: string;
+  display_name?: string | null;
+}
+
+interface ClaimTargetsResponse {
+  task_id: number;
+  target_type: TargetType;
+  count: number;
+  targets: TaskTarget[];
 }
 
 interface LogEntry {
@@ -50,10 +67,14 @@ const DEFAULT_GREETING_TEXTS = [
   "你好，我这边想和你交流一下相关信息，方便通过好友吗？",
 ];
 
+function targetTypeLabel(type: TargetType) {
+  if (type === "contact") return "联系人";
+  return type === "wechat_id" ? "微信号" : "手机号";
+}
+
 function TaskPanel({
   apiBase,
   token,
-  status,
   slotId,
   taskDefaults,
   taskDefaultsVersion,
@@ -62,13 +83,13 @@ function TaskPanel({
   onOpenPayment,
 }: Props) {
   const { isOnline } = useNetworkStatus();
+  const [targetType, setTargetType] = useState<TargetType>(() => loadTaskSlotConfig(slotId, taskDefaults).targetType);
   const [dailyLimit, setDailyLimit] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).dailyLimit);
   const [createTag, setCreateTag] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).createTag);
   const [greetingText, setGreetingText] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingText);
   const [isRunning, setIsRunning] = useState(false);
   const [, setTaskId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [counters, setCounters] = useState({ success: 0, failed: 0, invalid: 0, total: 0 });
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [bootDone, setBootDone] = useState(false);
   const [showAutomationPrompt, setShowAutomationPrompt] = useState(false);
@@ -85,14 +106,24 @@ function TaskPanel({
     setLogs((prev) => [...prev, { id: logId, text, type }]);
   }, []);
 
-  const reportResult = useCallback(async (contactId: string | number | undefined, event: string, message: string) => {
+  const reportResult = useCallback(async (
+    contactId: string | number | undefined,
+    targetId: string | number | undefined,
+    event: string,
+    message: string,
+  ) => {
     const tid = taskIdRef.current;
-    if (!tid || !contactId) return;
+    if (!tid || (!targetId && !contactId)) return;
     try {
       await fetch(`${apiBase}/tasks/${tid}/results`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ contact_id: Number(contactId), event, message }),
+        body: JSON.stringify({
+          target_id: targetId ? Number(targetId) : undefined,
+          contact_id: contactId ? Number(contactId) : undefined,
+          event,
+          message,
+        }),
       });
     } catch {
       addLog("上报结果失败", "error");
@@ -139,7 +170,7 @@ function TaskPanel({
 
       const msg = data.message || data.event;
       const ts = data.timestamp ? data.timestamp.split("T")[1]?.split("+")[0] || "" : "";
-      const resultKey = `${data.run_id || taskIdRef.current || ""}:${data.contact_id || ""}:${data.event}`;
+      const resultKey = `${data.run_id || taskIdRef.current || ""}:${data.target_id || data.contact_id || ""}:${data.event}`;
       const isResultEvent = data.event === "success" || data.event === "failed" || data.event === "invalid";
       if (isResultEvent && processedResultKeysRef.current.has(resultKey)) {
         return;
@@ -155,20 +186,17 @@ function TaskPanel({
         case "success":
           processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ✅ ${msg}`, "success");
-          setCounters((c) => ({ ...c, success: c.success + 1, total: c.total + 1 }));
-          reportResult(data.contact_id, data.event, msg);
+          reportResult(data.contact_id, data.target_id, data.event, msg);
           break;
         case "failed":
           processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ❌ ${msg}`, "failed");
-          setCounters((c) => ({ ...c, failed: c.failed + 1, total: c.total + 1 }));
-          reportResult(data.contact_id, data.event, msg);
+          reportResult(data.contact_id, data.target_id, data.event, msg);
           break;
         case "invalid":
           processedResultKeysRef.current.add(resultKey);
           addLog(`[${ts}] ⚠️ ${msg}`, "invalid");
-          setCounters((c) => ({ ...c, invalid: c.invalid + 1, total: c.total + 1 }));
-          reportResult(data.contact_id, data.event, msg);
+          reportResult(data.contact_id, data.target_id, data.event, msg);
           break;
         case "error":
           addLog(`[${ts}] 🔴 ${msg}`, "error");
@@ -222,6 +250,7 @@ function TaskPanel({
   useEffect(() => {
     if (isRunning) return;
     const slotConfig = loadTaskSlotConfig(slotId, taskDefaults);
+    setTargetType(slotConfig.targetType);
     setDailyLimit(slotConfig.dailyLimit);
     setCreateTag(slotConfig.createTag);
     setGreetingText(slotConfig.greetingText);
@@ -229,8 +258,8 @@ function TaskPanel({
 
   useEffect(() => {
     if (isRunning) return;
-    saveTaskSlotConfig(slotId, { dailyLimit, createTag, greetingText });
-  }, [createTag, dailyLimit, greetingText, isRunning, slotId]);
+    saveTaskSlotConfig(slotId, { targetType, dailyLimit, createTag, greetingText });
+  }, [createTag, dailyLimit, greetingText, isRunning, slotId, targetType]);
 
   useEffect(() => {
     return () => {
@@ -264,7 +293,6 @@ function TaskPanel({
     }
 
     setLogs([]);
-    setCounters({ success: 0, failed: 0, invalid: 0, total: 0 });
     processedResultKeysRef.current.clear();
 
     try {
@@ -278,7 +306,13 @@ function TaskPanel({
       const res = await fetch(`${apiBase}/tasks/start-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ slot_id: slotId, daily_limit: dailyLimit, create_tag: createTag, greeting_text: greetingText || null }),
+        body: JSON.stringify({
+          slot_id: slotId,
+          target_type: targetType,
+          daily_limit: dailyLimit,
+          create_tag: createTag,
+          greeting_text: greetingText || null,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.can_start) {
@@ -291,22 +325,42 @@ function TaskPanel({
       isFinishingRef.current = false;
       setIsRunning(true);
 
+      addLog(`正在领取${targetTypeLabel(targetType)}任务数据...`, "info");
+      const claimRes = await fetch(`${apiBase}/tasks/${data.task_id}/claim-targets`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const claimData: ClaimTargetsResponse = await claimRes.json();
+      if (!claimRes.ok) {
+        throw new Error((claimData as any)?.detail || "领取任务数据失败");
+      }
+      if (!claimData.targets.length) {
+        addLog(`暂无可执行的${targetTypeLabel(targetType)}任务数据`, "error");
+        await finishCurrentTask();
+        return;
+      }
+
       const config = {
         run_id: String(data.task_id),
         task_id: data.task_id,
         slot_id: slotId,
+        target_type: claimData.target_type,
         daily_limit: dailyLimit,
         create_tag: createTag,
         greeting_text: greetingText,
         wechat_binding: wechatBinding,
-        contacts: [],
+        targets: claimData.targets,
       };
 
-      addLog(`正在启动脚本，目标窗口：${wechatBinding.displayName}`, "info");
+      addLog(`已领取 ${claimData.targets.length} 条${targetTypeLabel(claimData.target_type)}数据，正在启动脚本`, "info");
       await invoke("start_task", { configJson: JSON.stringify(config) });
     } catch (e: any) {
       addLog(`启动失败: ${e}`, "error");
-      setIsRunning(false);
+      if (taskIdRef.current) {
+        await finishCurrentTask();
+      } else {
+        setIsRunning(false);
+      }
     }
   };
 
@@ -412,34 +466,6 @@ function TaskPanel({
         </div>
       </div>
 
-      {/* Status & Counters */}
-      <div className="section-card">
-        <div className="task-status-row">
-          <div className="ts-item">
-            <span className="ts-label">会员</span>
-            <span className={`ts-value ${status?.membership.is_active ? "active" : "inactive"}`}>
-              {status?.membership.is_active ? `有效至 ${status.membership.ends_at?.slice(0, 10)}` : "未开通"}
-            </span>
-          </div>
-          <div className="ts-item">
-            <span className="ts-label">试用剩余</span>
-            <span className="ts-value">{status?.trial.remaining ?? 0} 次</span>
-          </div>
-          <div className="ts-item">
-            <span className="ts-label">成功</span>
-            <span className="ts-value success">{counters.success}</span>
-          </div>
-          <div className="ts-item">
-            <span className="ts-label">失败</span>
-            <span className="ts-value failed">{counters.failed}</span>
-          </div>
-          <div className="ts-item">
-            <span className="ts-label">无效</span>
-            <span className="ts-value invalid">{counters.invalid}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Terminal — replaces log area */}
       <div className="section-card terminal-card">
         <div className="terminal-header">
@@ -462,6 +488,12 @@ function TaskPanel({
           {bootDone && (
             <div className="term-line term-ready">链路解析内核就绪，等待人工交互指令输入</div>
           )}
+          {logs.map((entry) => (
+            <div key={entry.id} className={`term-line term-log term-log-${entry.type}`}>
+              {entry.text}
+            </div>
+          ))}
+          <div ref={logEndRef} />
         </div>
         <div className="terminal-footer">
           全域行为监测系统实时在线，高密度连续发起链路申请将触发交互权限锁定，操作风险由使用者全权承担。本终端仅提供数据查阅能力，无自主批量交互执行模块。

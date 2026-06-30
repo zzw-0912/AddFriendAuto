@@ -100,6 +100,7 @@ export interface TaskListItem {
   email?: string | null;
   device_id: number;
   slot_id: number;
+  target_type: string;
   daily_limit: number;
   status: string;
   started_at: string;
@@ -111,6 +112,8 @@ export interface TaskListItem {
 
 export interface TaskResultItem {
   id: number;
+  target_id?: number | null;
+  target_type?: string | null;
   contact_id?: number | null;
   result: string;
   message?: string | null;

@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.schemas.task import ResultRequest, StartCheckRequest, StartCheckResponse, TaskResponse
-from app.services.task_service import finish_task, report_result, start_check
+from app.schemas.task import ClaimTargetsResponse, ResultRequest, StartCheckRequest, StartCheckResponse, TaskResponse
+from app.services.task_service import claim_targets, finish_task, report_result, start_check
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -16,7 +16,16 @@ def check_start(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return start_check(user, req.slot_id, req.daily_limit, req.create_tag, req.greeting_text, db)
+    return start_check(user, req.slot_id, req.target_type, req.daily_limit, req.create_tag, req.greeting_text, db)
+
+
+@router.post("/{task_id}/claim-targets", response_model=ClaimTargetsResponse)
+def claim(
+    task_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return claim_targets(task_id, user, db)
 
 
 @router.post("/{task_id}/results")
@@ -26,7 +35,7 @@ def report(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return report_result(task_id, req.contact_id, req.event, req.message, user, db)
+    return report_result(task_id, req.target_id, req.contact_id, req.event, req.message, user, db)
 
 
 @router.post("/{task_id}/finish", response_model=TaskResponse)

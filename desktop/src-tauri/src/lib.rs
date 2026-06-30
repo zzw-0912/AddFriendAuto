@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
@@ -52,6 +53,41 @@ fn data_dir() -> PathBuf {
         .join("FriendAuto");
     std::fs::create_dir_all(&path).ok();
     path
+}
+
+fn safe_run_id(value: &str) -> String {
+    let mut text: String = value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(80)
+        .collect();
+    if text.is_empty() {
+        text = "manual".to_string();
+    }
+    text
+}
+
+fn stop_request_path(run_id: &str) -> PathBuf {
+    let dir = data_dir().join("stop_requests");
+    std::fs::create_dir_all(&dir).ok();
+    dir.join(format!("{}.stop", safe_run_id(run_id)))
+}
+
+fn write_stop_request(run_id: &str) -> Result<(), String> {
+    let path = stop_request_path(run_id);
+    std::fs::write(path, "stop").map_err(|e| e.to_string())
+}
+
+fn clear_stop_request(run_id: &str) {
+    let path = stop_request_path(run_id);
+    let _ = std::fs::remove_file(path);
 }
 
 fn default_autodoor_config() -> AutoDoorConfig {
@@ -380,6 +416,7 @@ fn start_task(
 ) -> Result<(), String> {
     let (run_id, slot_id) = task_identity(&config_json)?;
     let mut state = state.lock().map_err(|e| e.to_string())?;
+    clear_stop_request(&run_id);
 
     if let Some(mut child) = state.children.remove(&run_id) {
         let _ = child.kill();
@@ -455,8 +492,16 @@ fn start_task(
 
 #[tauri::command]
 fn stop_task(state: tauri::State<'_, Mutex<TaskState>>, run_id: String) -> Result<(), String> {
+    let _ = write_stop_request(&run_id);
     let mut state = state.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = state.children.remove(&run_id) {
+        for _ in 0..20 {
+            match child.try_wait() {
+                Ok(Some(_)) => return Ok(()),
+                Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+                Err(_) => break,
+            }
+        }
         let _ = child.kill();
         let _ = child.wait();
     }

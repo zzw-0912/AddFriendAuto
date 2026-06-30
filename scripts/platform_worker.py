@@ -28,7 +28,9 @@ DEFAULT_AUTODOOR_SOURCE_PATH = r"D:\AddFriend\autodoor_behavior_tree"
 DEFAULT_PROJECT_PATH = r"D:\AddFriend\Addfriend"
 CONFIG_FILE_NAME = "autodoor.json"
 PROJECT_COPY_NAME = "Addfriend"
+STOP_REQUEST_DIR_NAME = "stop_requests"
 PHONE_INPUT_KEYWORDS = ["输入手机号", "手机号"]
+WECHAT_ID_INPUT_KEYWORDS = ["输入微信号", "微信号"]
 GREETING_KEYWORDS = ["输入申请语", "申请语"]
 VALIDATION_KEYWORDS = ["判断是否输入正确", "输入正确"]
 CONFIRM_CLICK_KEYWORDS = ["点击确定", "确定"]
@@ -52,6 +54,14 @@ class RunOutcome:
 
 
 @dataclass
+class PreparedTarget:
+    target_id: int | None
+    target_type: str
+    target_value: str
+    display_name: str = ""
+
+
+@dataclass
 class AutoDoorConfig:
     autodoor_source_path: str
     project_path: str
@@ -63,6 +73,8 @@ class PreparedRun:
     run_dir: Path
     project_dir: Path
     tree_file: Path
+    target_type: str
+    targets: list[PreparedTarget]
     phone_numbers: list[str]
     phone_input_ids: set[str]
     validation_ids: set[str]
@@ -71,6 +83,10 @@ class PreparedRun:
 
 
 _emit_lock = threading.Lock()
+
+
+class StopRequested(Exception):
+    pass
 
 
 def now_iso() -> str:
@@ -167,6 +183,27 @@ def safe_run_id(value: Any) -> str:
     return text[:80] or "manual"
 
 
+def stop_request_path(run_id: Any) -> Path:
+    return app_data_dir() / STOP_REQUEST_DIR_NAME / f"{safe_run_id(run_id)}.stop"
+
+
+def stop_requested(run_id: Any) -> bool:
+    return bool(str(run_id or "").strip()) and stop_request_path(run_id).exists()
+
+
+def raise_if_stop_requested(run_id: Any) -> None:
+    if stop_requested(run_id):
+        raise StopRequested()
+
+
+def interruptible_sleep(seconds: float, run_id: Any, interval: float = 0.1) -> None:
+    deadline = time.monotonic() + max(0.0, seconds)
+    while time.monotonic() < deadline:
+        raise_if_stop_requested(run_id)
+        time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
+    raise_if_stop_requested(run_id)
+
+
 def contact_id_for(phone: str) -> int:
     normalized = re.sub(r"\D+", "", phone)
     return zlib.crc32(normalized.encode("utf-8")) & 0x7FFFFFFF
@@ -177,6 +214,32 @@ def mask_phone(phone: str) -> str:
     if len(digits) >= 7:
         return f"{digits[:3]}****{digits[-4:]}"
     return phone
+
+
+def mask_target(target_type: str, value: str) -> str:
+    if target_type == "phone":
+        return mask_phone(value)
+    text = str(value or "")
+    if len(text) <= 4:
+        return "*" * len(text)
+    return f"{text[:2]}***{text[-2:]}"
+
+
+def target_contact_id(target: PreparedTarget | None) -> int | None:
+    if not target:
+        return None
+    if target.target_type == "phone":
+        return contact_id_for(target.target_value)
+    normalized = str(target.target_value or "").strip()
+    if not normalized:
+        return None
+    return zlib.crc32(normalized.encode("utf-8")) & 0x7FFFFFFF
+
+
+def target_label(target_type: str) -> str:
+    if target_type == "contact":
+        return "联系人"
+    return "微信号" if target_type == "wechat_id" else "手机号"
 
 
 def text_variants(keyword: str) -> set[str]:
@@ -306,6 +369,53 @@ def rebuild_connections(tree_data: dict[str, Any]) -> None:
 
 def normalize_phone(value: Any) -> str:
     return re.sub(r"\D+", "", str(value or ""))
+
+
+def normalize_target_type(value: Any) -> str:
+    text = str(value or "").strip()
+    if text in {"phone", "wechat_id"}:
+        return text
+    return "contact"
+
+
+def parse_task_targets(task_config: dict[str, Any]) -> list[PreparedTarget]:
+    raw_targets = task_config.get("targets")
+    if not isinstance(raw_targets, list):
+        raw_targets = task_config.get("contacts")
+    if not isinstance(raw_targets, list):
+        return []
+
+    fallback_type = normalize_target_type(task_config.get("target_type"))
+    targets: list[PreparedTarget] = []
+    for item in raw_targets:
+        if not isinstance(item, dict):
+            continue
+        value = str(item.get("target_value") or item.get("value") or item.get("phone") or item.get("wechat_id") or "").strip()
+        if not value:
+            continue
+        target_type = normalize_target_type(item.get("target_type") or fallback_type)
+        if target_type == "phone":
+            value = normalize_phone(value)
+            if len(value) != 11:
+                raise RuntimeError(f"后端任务数据包含无效手机号: target_id={item.get('target_id')}, value='{item.get('target_value') or value}'")
+        target_id_raw = item.get("target_id") or item.get("id")
+        try:
+            target_id = int(target_id_raw) if target_id_raw is not None else None
+        except Exception:
+            target_id = None
+        targets.append(
+            PreparedTarget(
+                target_id=target_id,
+                target_type=target_type,
+                target_value=value,
+                display_name=str(item.get("display_name") or item.get("displayName") or item.get("name") or "").strip(),
+            )
+        )
+
+    target_types = {target.target_type for target in targets}
+    if len(target_types) > 1:
+        raise RuntimeError("同一次任务不能混合手机号和微信号")
+    return targets
 
 
 def validate_phone_pool(nodes: dict[str, dict[str, Any]], phone_input_ids: list[str]) -> None:
@@ -470,21 +580,44 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
             raise RuntimeError("AutoDoor 项目中没有找到可绑定的微信开始节点")
         active_ids = reachable_enabled_ids(nodes, tree_data.get("root_node"))
 
-    phone_input_ids = [
+    task_targets = parse_task_targets(task_config)
+    target_type = task_targets[0].target_type if task_targets else normalize_target_type(task_config.get("target_type"))
+    input_keywords = WECHAT_ID_INPUT_KEYWORDS if target_type == "wechat_id" else PHONE_INPUT_KEYWORDS
+    target_input_ids = [
         node_id
         for node_id in active_ids
         if node_type(nodes[node_id]) == "TextInputNode"
-        and contains_any(node_name(nodes[node_id]), PHONE_INPUT_KEYWORDS)
+        and contains_any(node_name(nodes[node_id]), input_keywords)
     ]
-    validate_phone_pool(nodes, phone_input_ids)
-    phone_pool = extract_phone_pool(nodes, phone_input_ids)
-    if not phone_pool:
-        raise RuntimeError("AutoDoor 项目中没有找到手机号输入节点或手机号池")
+    if not target_input_ids and target_type == "wechat_id":
+        target_input_ids = [
+            node_id
+            for node_id in active_ids
+            if node_type(nodes[node_id]) == "TextInputNode"
+            and contains_any(node_name(nodes[node_id]), PHONE_INPUT_KEYWORDS)
+        ]
+    if not target_input_ids:
+        raise RuntimeError(f"AutoDoor 项目中没有找到{target_label(target_type)}输入节点")
 
-    limit = max(1, min(int(task_config.get("daily_limit") or 1), len(phone_pool)))
-    phone_numbers = phone_pool[:limit]
+    if task_targets:
+        limit = max(1, min(int(task_config.get("daily_limit") or 1), len(task_targets)))
+        task_targets = task_targets[:limit]
+    elif target_type == "phone":
+        validate_phone_pool(nodes, target_input_ids)
+        phone_pool = extract_phone_pool(nodes, target_input_ids)
+        if not phone_pool:
+            raise RuntimeError("AutoDoor 项目中没有找到手机号输入节点或手机号池")
+        limit = max(1, min(int(task_config.get("daily_limit") or 1), len(phone_pool)))
+        task_targets = [
+            PreparedTarget(target_id=None, target_type="phone", target_value=phone)
+            for phone in phone_pool[:limit]
+        ]
+    else:
+        raise RuntimeError("后端没有下发微信号任务数据")
 
-    for node_id in phone_input_ids:
+    phone_numbers = [target.target_value for target in task_targets]
+
+    for node_id in target_input_ids:
         config = get_config(nodes[node_id])
         config["input_mode"] = "预设文本"
         config["preset_texts"] = phone_numbers
@@ -531,8 +664,10 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         json.dump(tree_data, f, ensure_ascii=False, indent=2)
 
     return {
+        "target_type": target_type,
+        "targets": task_targets,
         "phone_numbers": phone_numbers,
-        "phone_input_ids": phone_input_ids,
+        "phone_input_ids": target_input_ids,
         "validation_ids": validation_ids,
         "confirm_click_ids": confirm_click_ids,
         "key_failure_ids": key_failure_ids,
@@ -572,6 +707,8 @@ def prepare_run(config: AutoDoorConfig, task_config: dict[str, Any]) -> Prepared
         run_dir=run_dir,
         project_dir=project_dir,
         tree_file=tree_file,
+        target_type=patched["target_type"],
+        targets=patched["targets"],
         phone_numbers=patched["phone_numbers"],
         phone_input_ids=set(patched["phone_input_ids"]),
         validation_ids=set(patched["validation_ids"]),
@@ -644,12 +781,22 @@ def patch_text_input_clipboard_lock() -> None:
     original_fast = TextInputNode._input_text_fast
     original_slow = TextInputNode._input_text_slow
 
+    def ensure_text_input_allowed(context) -> None:
+        run_id = getattr(context, "_friendauto_run_id", "")
+        if stop_requested(run_id):
+            context._is_running = False
+            raise RuntimeError("任务已停止，取消本次文本输入")
+
     def locked_fast(self, context, text: str) -> None:
+        ensure_text_input_allowed(context)
         with interprocess_file_lock(CLIPBOARD_LOCK_FILE_NAME):
+            ensure_text_input_allowed(context)
             return original_fast(self, context, text)
 
     def locked_slow(self, context, text: str) -> None:
+        ensure_text_input_allowed(context)
         with interprocess_file_lock(CLIPBOARD_LOCK_FILE_NAME):
+            ensure_text_input_allowed(context)
             return original_slow(self, context, text)
 
     locked_fast._friendauto_clipboard_locked = True  # type: ignore[attr-defined]
@@ -695,50 +842,60 @@ def run_autodoor_once(
         raise RuntimeError("AutoDoor tree.json 没有有效根节点")
 
     run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
+    raise_if_stop_requested(run_id)
     node_meta = load_node_meta(prepared.tree_file)
     dispatcher = UIUpdateDispatcher()
     log_manager = LogManager.instance()
     log_manager.flush()
 
     state = {
-        "phone_index": -1,
-        "current_phone": None,
+        "target_index": -1,
+        "current_target": None,
         "completed": set(),
         "failed": set(),
         "invalid": set(),
     }
 
     def current_contact_id() -> int | None:
-        phone = state["current_phone"]
-        return contact_id_for(phone) if phone else None
+        return target_contact_id(state["current_target"])
 
     def mark_terminal(event_name: str, message: str) -> None:
-        phone = state["current_phone"]
-        if not phone:
+        target = state["current_target"]
+        if not target:
             return
-        contact_id = contact_id_for(phone)
-        if contact_id in state["completed"] or contact_id in state["failed"] or contact_id in state["invalid"]:
+        contact_id = target_contact_id(target)
+        result_key = target.target_id or contact_id
+        if result_key in state["completed"] or result_key in state["failed"] or result_key in state["invalid"]:
             return
         if event_name == "success":
-            state["completed"].add(contact_id)
+            state["completed"].add(result_key)
         elif event_name == "invalid":
-            state["invalid"].add(contact_id)
+            state["invalid"].add(result_key)
         else:
-            state["failed"].add(contact_id)
-        emit(event_name, message, run_id=run_id, contact_id=contact_id)
+            state["failed"].add(result_key)
+        emit(
+            event_name,
+            message,
+            run_id=run_id,
+            target_id=target.target_id,
+            target_type=target.target_type,
+            contact_id=contact_id,
+        )
 
-    def advance_current_phone() -> None:
-        next_index = min(state["phone_index"] + 1, len(prepared.phone_numbers) - 1)
-        if next_index < 0 or next_index == state["phone_index"]:
+    def advance_current_target() -> None:
+        next_index = min(state["target_index"] + 1, len(prepared.targets) - 1)
+        if next_index < 0 or next_index == state["target_index"]:
             return
-        state["phone_index"] = next_index
-        state["current_phone"] = prepared.phone_numbers[next_index]
-        phone = state["current_phone"]
+        state["target_index"] = next_index
+        state["current_target"] = prepared.targets[next_index]
+        target = state["current_target"]
         emit(
             "progress",
-            f"开始处理手机号 {mask_phone(phone)}",
+            f"开始处理{target_label(target.target_type)} {mask_target(target.target_type, target.target_value)}",
             run_id=run_id,
-            contact_id=contact_id_for(phone),
+            target_id=target.target_id,
+            target_type=target.target_type,
+            contact_id=target_contact_id(target),
         )
 
     def handle_node_status(node_id: str, status: str) -> None:
@@ -762,19 +919,28 @@ def run_autodoor_once(
 
     def flush_logs() -> None:
         for entry in log_manager.flush():
-            if entry.level == LogLevel.SUCCESS and contains_any(entry.node_name, ["输入手机号", "手机号"]):
-                advance_current_phone()
+            if entry.level == LogLevel.SUCCESS and contains_any(entry.node_name, PHONE_INPUT_KEYWORDS + WECHAT_ID_INPUT_KEYWORDS):
+                advance_current_target()
                 continue
             if entry.level == LogLevel.INFO and entry.message:
                 message = str(entry.message)
                 if contains_any(message, ["异常", "错误", "失败"]):
-                    emit("progress", message, run_id=run_id, contact_id=current_contact_id())
+                    target = state["current_target"]
+                    emit(
+                        "progress",
+                        message,
+                        run_id=run_id,
+                        target_id=target.target_id if target else None,
+                        target_type=target.target_type if target else None,
+                        contact_id=current_contact_id(),
+                    )
 
     def handle_engine_status(status: str, node_status: Any = None) -> None:
         if status == "stopped":
             emit("progress", "AutoDoor 引擎已停止", run_id=run_id)
 
     context = ExecutionContext(project_root=str(prepared.project_dir))
+    context._friendauto_run_id = run_id
     context._on_node_status = handle_node_status
     engine = BehaviorTreeEngine(root_node)
     engine._on_status_change = handle_engine_status
@@ -784,20 +950,29 @@ def run_autodoor_once(
 
     try:
         while engine.get_status().get("running"):
+            if stop_requested(run_id):
+                emit("progress", "收到停止指令，正在停止 AutoDoor 引擎", run_id=run_id)
+                engine.stop()
+                raise StopRequested()
             dispatcher.process_pending()
             flush_logs()
-            time.sleep(0.2)
+            interruptible_sleep(0.2, run_id)
+    except StopRequested:
+        if engine.get_status().get("running"):
+            emit("progress", "收到停止指令，正在停止 AutoDoor 引擎", run_id=run_id)
+            engine.stop()
+        raise
     finally:
         dispatcher.process_pending()
         flush_logs()
 
     total_finished = len(state["completed"]) + len(state["failed"]) + len(state["invalid"])
-    if state["current_phone"] and total_finished == 0:
+    if state["current_target"] and total_finished == 0:
         mark_terminal("failed", "任务结束但未捕获到发送成功事件")
         total_finished = len(state["completed"]) + len(state["failed"]) + len(state["invalid"])
 
     return RunOutcome(
-        phone_started=state["phone_index"] >= 0,
+        phone_started=state["target_index"] >= 0,
         total_finished=total_finished,
         success_count=len(state["completed"]),
         failed_count=len(state["failed"]),
@@ -809,29 +984,32 @@ def run_autodoor_once(
 def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dict[str, Any]) -> None:
     deps = import_autodoor(config)
     run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
+    raise_if_stop_requested(run_id)
     if parse_wechat_binding(task_config) and os.environ.get("FRIENDAUTO_FORCE_BG_INPUT") == "1":
         configure_bound_window_runtime()
         emit("progress", "已启用绑定窗口后台输入模式", run_id=run_id)
 
     emit(
         "started",
-        f"AutoDoor 任务启动，共 {len(prepared.phone_numbers)} 个手机号",
+        f"AutoDoor 任务启动，共 {len(prepared.targets)} 个{target_label(prepared.target_type)}",
         run_id=run_id,
     )
 
     outcome: RunOutcome | None = None
     for attempt in range(1, BOOTSTRAP_MAX_ATTEMPTS + 1):
+        raise_if_stop_requested(run_id)
         if attempt > 1:
             emit("progress", f"正在进行第 {attempt} 次启动尝试", run_id=run_id)
 
         outcome = run_autodoor_once(deps, prepared, task_config)
+        raise_if_stop_requested(run_id)
         if should_retry_bootstrap(outcome, attempt):
             emit(
                 "progress",
                 "微信窗口首次启动尚未稳定，等待后自动重试一次",
                 run_id=run_id,
             )
-            time.sleep(BOOTSTRAP_RETRY_DELAY_SECONDS)
+            interruptible_sleep(BOOTSTRAP_RETRY_DELAY_SECONDS, run_id)
             continue
         break
 
@@ -841,7 +1019,7 @@ def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dic
     if not outcome.phone_started and outcome.total_finished == 0:
         emit(
             "error",
-            "任务未进入手机号输入步骤，请确认微信已登录且“添加朋友”窗口可正常打开",
+            f"任务未进入{target_label(prepared.target_type)}输入步骤，请确认微信已登录且“添加朋友”窗口可正常打开",
             run_id=run_id,
         )
 
@@ -863,6 +1041,7 @@ def load_node_meta(tree_file: Path) -> dict[str, dict[str, str]]:
 
 
 def main() -> int:
+    task_config: dict[str, Any] = {}
     raw = sys.stdin.read()
     try:
         task_config = json.loads(raw or "{}")
@@ -872,14 +1051,20 @@ def main() -> int:
 
     try:
         config = load_config()
+        run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
+        raise_if_stop_requested(run_id)
         prepared = prepare_run(config, task_config)
-        run_id = str(task_config.get("run_id") or "")
+        raise_if_stop_requested(run_id)
         emit("progress", f"已创建运行副本: {prepared.project_dir}", run_id=run_id)
         emit("progress", "等待其他微信任务释放鼠标键盘...", run_id=run_id)
         with interprocess_file_lock(AUTOMATION_LOCK_FILE_NAME):
+            raise_if_stop_requested(run_id)
             emit("progress", "已获得鼠标键盘控制权，开始执行", run_id=run_id)
             run_autodoor(config, prepared, task_config)
         return 0
+    except StopRequested:
+        emit("exited", "任务已停止", run_id=str(task_config.get("run_id") or task_config.get("task_id") or ""))
+        return 130
     except KeyboardInterrupt:
         emit("exited", "任务已停止")
         return 130

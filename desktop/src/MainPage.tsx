@@ -53,6 +53,7 @@ const HERO_SLIDES = [
 
 function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
   return {
+    targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
     createTag: Boolean(defaults?.createTag),
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,

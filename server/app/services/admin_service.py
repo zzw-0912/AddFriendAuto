@@ -411,7 +411,7 @@ def list_tasks(page: int, page_size: int, status_filter: str | None, db: Session
         s = stats_map.get(t.id, {"success": 0, "failed": 0, "invalid": 0})
         items.append(TaskListItem(
             id=t.id, user_id=t.user_id, email=users_map.get(t.user_id),
-            device_id=t.device_id, slot_id=t.slot_id, daily_limit=t.daily_limit,
+            device_id=t.device_id, slot_id=t.slot_id, target_type=t.target_type, daily_limit=t.daily_limit,
             status=t.status, started_at=t.started_at, finished_at=t.finished_at,
             success_count=s["success"], failed_count=s["failed"], invalid_count=s["invalid"],
         ))
@@ -426,7 +426,7 @@ def list_task_results(task_id: int, db: Session) -> list:
 
     results = db.query(TaskResult).filter(TaskResult.task_id == task_id).order_by(TaskResult.id).all()
     return [TaskResultItem(
-        id=r.id, contact_id=r.contact_id, result=r.result,
+        id=r.id, target_id=r.target_id, target_type=r.target_type, contact_id=r.contact_id, result=r.result,
         message=r.message, trial_charged=r.trial_charged, created_at=r.created_at,
     ) for r in results]
 

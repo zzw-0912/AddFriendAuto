@@ -714,6 +714,10 @@
   flex: 0 1 262px;
   max-width: 262px;
 }
+.task-card .config-row .target-type-field {
+  flex: 0 1 180px;
+  max-width: 180px;
+}
 .task-card .config-input { width: 100%; }
 .task-card .config-textarea { width: 100%; resize: vertical; }
 
@@ -1002,39 +1006,6 @@
   box-shadow: none;
 }
 
-/* ─── Status Row (TaskPanel counters) ────────────── */
-.task-card .task-status-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.task-card .ts-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 80px;
-}
-
-.task-card .ts-label {
-  font-size: 11px;
-  color: #667085;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.task-card .ts-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #101828;
-}
-
-.task-card .ts-value.active { color: #16a34a; }
-.task-card .ts-value.inactive { color: #667085; }
-.task-card .ts-value.success { color: #16a34a; }
-.task-card .ts-value.failed { color: #ef4444; }
-.task-card .ts-value.invalid { color: #f59e0b; }
-
 /* ─── Log Area ───────────────────────────────────── */
 .task-card .log-card {
   flex: 1;
@@ -1169,6 +1140,25 @@
   color: #3fb950;
   font-weight: 600;
   margin-top: 8px;
+}
+.term-log {
+  color: #c9d1d9;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.term-log-info {
+  color: #79c0ff;
+}
+.term-log-normal {
+  color: #c9d1d9;
+}
+.term-log-success {
+  color: #3fb950;
+}
+.term-log-failed,
+.term-log-invalid,
+.term-log-error {
+  color: #ff7b72;
 }
 .term-cursor {
   color: #3fb950;

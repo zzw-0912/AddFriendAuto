@@ -1,4 +1,7 @@
+export type TargetType = "contact" | "phone" | "wechat_id";
+
 export interface TaskDefaults {
+  targetType: TargetType;
   dailyLimit: number;
   createTag: boolean;
   greetingText: string;
@@ -32,6 +35,7 @@ export const TASK_SLOT_CONFIGS_STORAGE_KEY = "friendauto.taskSlotConfigs.v1";
 export const WECHAT_BINDINGS_STORAGE_KEY = "friendauto.wechatBindings.v1";
 
 export const DEFAULT_TASK_DEFAULTS: TaskDefaults = {
+  targetType: "contact",
   dailyLimit: 20,
   createTag: false,
   greetingText: "",
