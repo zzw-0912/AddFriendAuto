@@ -9,9 +9,21 @@ interface Props {
   taskDefaults: TaskDefaults;
   taskDefaultsVersion: number;
   onStatusChange: () => void;
+  onOpenTutorial: () => void;
+  onOpenPayment: () => void;
 }
 
-function TaskCard({ apiBase, token, status, slotId, taskDefaults, taskDefaultsVersion, onStatusChange }: Props) {
+function TaskCard({
+  apiBase,
+  token,
+  status,
+  slotId,
+  taskDefaults,
+  taskDefaultsVersion,
+  onStatusChange,
+  onOpenTutorial,
+  onOpenPayment,
+}: Props) {
   return (
     <section className="task-card">
       <TaskPanel
@@ -22,6 +34,8 @@ function TaskCard({ apiBase, token, status, slotId, taskDefaults, taskDefaultsVe
         taskDefaults={taskDefaults}
         taskDefaultsVersion={taskDefaultsVersion}
         onStatusChange={onStatusChange}
+        onOpenTutorial={onOpenTutorial}
+        onOpenPayment={onOpenPayment}
       />
     </section>
   );

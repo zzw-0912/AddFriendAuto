@@ -13,6 +13,8 @@ interface Props {
   taskDefaults: TaskDefaults;
   taskDefaultsVersion: number;
   onStatusChange: () => void;
+  onOpenTutorial: () => void;
+  onOpenPayment: () => void;
 }
 
 interface ScriptEvent {
@@ -41,7 +43,17 @@ const BOOT_STEPS = [
   "规避高频访问识别探针",
 ];
 
-function TaskPanel({ apiBase, token, status, slotId, taskDefaults, taskDefaultsVersion, onStatusChange }: Props) {
+function TaskPanel({
+  apiBase,
+  token,
+  status,
+  slotId,
+  taskDefaults,
+  taskDefaultsVersion,
+  onStatusChange,
+  onOpenTutorial,
+  onOpenPayment,
+}: Props) {
   const { isOnline } = useNetworkStatus();
   const [dailyLimit, setDailyLimit] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).dailyLimit);
   const [createTag, setCreateTag] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).createTag);
@@ -281,8 +293,18 @@ function TaskPanel({ apiBase, token, status, slotId, taskDefaults, taskDefaultsV
   return (
     <div className="task-panel">
       {/* Config section */}
-      <div className="section-card">
-        <h3 className="section-title">微信{slotId}任务配置</h3>
+      <div className="section-card task-config-card">
+        <div className="task-config-header">
+          <h3 className="section-title">微信{slotId}任务配置</h3>
+          <div className="task-shortcuts">
+            <button className="task-shortcut task-shortcut-warning" type="button" onClick={onOpenTutorial}>
+              注意事项
+            </button>
+            <button className="task-shortcut task-shortcut-upgrade" type="button" onClick={onOpenPayment}>
+              增加微信加人窗口
+            </button>
+          </div>
+        </div>
         <div className="task-config">
           <div className="config-row">
             <div className="field">

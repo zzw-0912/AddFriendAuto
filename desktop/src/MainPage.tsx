@@ -257,6 +257,8 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               taskDefaults={taskDefaults}
               taskDefaultsVersion={taskDefaultsVersion}
               onStatusChange={fetchStatus}
+              onOpenTutorial={() => setActiveNav("用户教程")}
+              onOpenPayment={() => setShowPayment(true)}
             />
           ))}
         </div>
