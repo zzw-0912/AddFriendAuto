@@ -8,7 +8,7 @@ interface Props {
   slotId: number;
   taskDefaults: TaskDefaults;
   taskDefaultsVersion: number;
-  onStatusChange: () => void;
+  onStatusChange: (options?: { force?: boolean }) => void | Promise<unknown>;
   onOpenTutorial: () => void;
   onOpenPayment: () => void;
 }

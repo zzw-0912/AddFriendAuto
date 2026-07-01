@@ -12,7 +12,7 @@ interface Props {
   slotId: number;
   taskDefaults: TaskDefaults;
   taskDefaultsVersion: number;
-  onStatusChange: () => void;
+  onStatusChange: (options?: { force?: boolean }) => void | Promise<unknown>;
   onOpenTutorial: () => void;
   onOpenPayment: () => void;
 }
@@ -317,6 +317,11 @@ function TaskPanel({
       const data = await res.json();
       if (!res.ok || !data.can_start) {
         addLog(`无法启动: ${data.reason || "校验失败"}`, "error");
+        const noRemainingAccess = !data.membership?.is_active && (data.trial?.remaining ?? 0) <= 0;
+        if (noRemainingAccess) {
+          await onStatusChange({ force: true });
+          onOpenPayment();
+        }
         return;
       }
 
