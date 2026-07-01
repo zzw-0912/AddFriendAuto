@@ -57,22 +57,52 @@ def _verify_admin_password(admin: AdminUser, password: str, db: Session) -> bool
 def admin_login(username: str, password: str, db: Session) -> dict:
     admin = db.query(AdminUser).filter(AdminUser.username == username, AdminUser.status == "active").first()
     if not admin:
+        create_audit_log(
+            0,
+            "admin_login_failed",
+            "admin",
+            None,
+            audit_detail(username=username, reason="admin_not_found_or_inactive"),
+            db,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     if not _verify_admin_password(admin, password, db):
+        create_audit_log(
+            admin.id,
+            "admin_login_failed",
+            "admin",
+            admin.id,
+            audit_detail(username=admin.username, reason="bad_password"),
+            db,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
+    admin_info = AdminInfo(id=admin.id, username=admin.username, role=admin.role).model_dump()
     token = create_access_token({
         "sub": f"admin_{admin.id}",
         "username": admin.username,
         "role": admin.role,
     })
+    create_audit_log(
+        admin.id,
+        "admin_login",
+        "admin",
+        admin.id,
+        audit_detail(username=admin.username, role=admin.role),
+        db,
+    )
 
     return {
         "access_token": token,
         "token_type": "bearer",
-        "admin": AdminInfo(id=admin.id, username=admin.username, role=admin.role).model_dump(),
+        "admin": admin_info,
     }
+
+
+def audit_detail(**kwargs) -> str:
+    data = {key: value for key, value in kwargs.items() if value is not None}
+    return json.dumps(data, ensure_ascii=False, default=str)
 
 
 def create_audit_log(admin_user_id: int, action: str, target_type: str | None = None,
@@ -409,11 +439,17 @@ def update_plan(plan_id: int, req, admin_user_id: int, db: Session) -> AdminPlan
         changes.append(f"enabled: {plan.enabled} -> {req.enabled}")
         plan.enabled = req.enabled
 
+    if not changes:
+        create_audit_log(admin_user_id, "update_plan_noop", "plan", plan_id, "No plan fields changed", db)
+        return AdminPlanResponse(
+            id=plan.id, name=plan.name, duration_days=plan.duration_days,
+            price_cents=plan.price_cents, enabled=plan.enabled,
+        )
+
     db.commit()
     db.refresh(plan)
 
-    if changes:
-        create_audit_log(admin_user_id, "update_plan", "plan", plan_id, "; ".join(changes), db)
+    create_audit_log(admin_user_id, "update_plan", "plan", plan_id, "; ".join(changes), db)
 
     return AdminPlanResponse(
         id=plan.id, name=plan.name, duration_days=plan.duration_days,
@@ -529,7 +565,7 @@ def list_audit_logs(page: int, page_size: int, db: Session) -> dict:
     admins_map = {a.id: a.username for a in db.query(AdminUser).filter(AdminUser.id.in_(admin_ids)).all()} if admin_ids else {}
 
     items = [AuditLogItem(
-        id=l.id, admin_username=admins_map.get(l.admin_user_id),
+        id=l.id, admin_user_id=l.admin_user_id, admin_username=admins_map.get(l.admin_user_id),
         action=l.action, target_type=l.target_type, target_id=l.target_id,
         detail=l.detail, created_at=l.created_at,
     ) for l in logs]

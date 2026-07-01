@@ -141,6 +141,7 @@ class TaskResultItem(BaseModel):
 
 class AuditLogItem(BaseModel):
     id: int
+    admin_user_id: int
     admin_username: str | None = None
     action: str
     target_type: str | None = None
