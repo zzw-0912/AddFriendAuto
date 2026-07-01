@@ -90,12 +90,75 @@ fn clear_stop_request(run_id: &str) {
     let _ = std::fs::remove_file(path);
 }
 
-fn default_autodoor_config() -> AutoDoorConfig {
-    AutoDoorConfig {
-        autodoor_source_path: r"D:\AddFriend\autodoor_behavior_tree".to_string(),
-        project_path: r"D:\AddFriend\Addfriend".to_string(),
-        editor_executable_path: r"D:\AddFriend\autodoor_behavior_tree\dist\autodoor-behaviortree-1.6.0\autodoor-behaviortree-1.6.0.exe".to_string(),
+const LEGACY_AUTODOOR_SOURCE_PATH: &str = r"D:\AddFriend\autodoor_behavior_tree";
+const LEGACY_PROJECT_PATH: &str = r"D:\AddFriend\Addfriend";
+const LEGACY_EDITOR_EXECUTABLE_PATH: &str = r"D:\AddFriend\autodoor_behavior_tree\dist\autodoor-behaviortree-1.6.0\autodoor-behaviortree-1.6.0.exe";
+
+fn autodoor_editor_path(source_path: &Path) -> String {
+    let preferred = source_path
+        .join("dist")
+        .join("autodoor-behaviortree-1.6.0")
+        .join("autodoor-behaviortree-1.6.0.exe");
+    if preferred.is_file() {
+        preferred.to_string_lossy().to_string()
+    } else {
+        String::new()
     }
+}
+
+fn runtime_base_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        dirs.push(cwd.clone());
+        if let Some(parent) = cwd.parent() {
+            dirs.push(parent.to_path_buf());
+            if let Some(grandparent) = parent.parent() {
+                dirs.push(grandparent.to_path_buf());
+            }
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            dirs.push(exe_dir.to_path_buf());
+            if let Some(parent) = exe_dir.parent() {
+                dirs.push(parent.to_path_buf());
+            }
+        }
+    }
+    dirs
+}
+
+fn local_autodoor_config() -> Option<AutoDoorConfig> {
+    for base in runtime_base_dirs() {
+        for root in [base.join("automation"), base.clone()] {
+            let source_path = root.join("autodoor_behavior_tree");
+            let project_path = root.join("Addfriend");
+            if source_path.is_dir() && project_path.is_dir() {
+                return Some(AutoDoorConfig {
+                    editor_executable_path: autodoor_editor_path(&source_path),
+                    autodoor_source_path: source_path.to_string_lossy().to_string(),
+                    project_path: project_path.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+    None
+}
+
+fn legacy_autodoor_config() -> AutoDoorConfig {
+    AutoDoorConfig {
+        autodoor_source_path: LEGACY_AUTODOOR_SOURCE_PATH.to_string(),
+        project_path: LEGACY_PROJECT_PATH.to_string(),
+        editor_executable_path: LEGACY_EDITOR_EXECUTABLE_PATH.to_string(),
+    }
+}
+
+fn is_legacy_path(value: &str, legacy: &str) -> bool {
+    value.trim().eq_ignore_ascii_case(legacy)
+}
+
+fn default_autodoor_config() -> AutoDoorConfig {
+    local_autodoor_config().unwrap_or_else(legacy_autodoor_config)
 }
 
 fn autodoor_config_path() -> PathBuf {
@@ -110,9 +173,25 @@ fn normalize_autodoor_config(mut config: AutoDoorConfig) -> AutoDoorConfig {
 
     if config.autodoor_source_path.is_empty() {
         config.autodoor_source_path = defaults.autodoor_source_path;
+    } else if is_legacy_path(&config.autodoor_source_path, LEGACY_AUTODOOR_SOURCE_PATH)
+        && Path::new(&defaults.autodoor_source_path).is_dir()
+        && !is_legacy_path(&defaults.autodoor_source_path, LEGACY_AUTODOOR_SOURCE_PATH)
+    {
+        config.autodoor_source_path = defaults.autodoor_source_path;
     }
     if config.project_path.is_empty() {
         config.project_path = defaults.project_path;
+    } else if is_legacy_path(&config.project_path, LEGACY_PROJECT_PATH)
+        && Path::new(&defaults.project_path).is_dir()
+        && !is_legacy_path(&defaults.project_path, LEGACY_PROJECT_PATH)
+    {
+        config.project_path = defaults.project_path;
+    }
+    if config.editor_executable_path.is_empty()
+        || (is_legacy_path(&config.editor_executable_path, LEGACY_EDITOR_EXECUTABLE_PATH)
+            && !is_legacy_path(&defaults.editor_executable_path, LEGACY_EDITOR_EXECUTABLE_PATH))
+    {
+        config.editor_executable_path = defaults.editor_executable_path;
     }
     config
 }

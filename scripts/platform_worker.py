@@ -24,8 +24,12 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_AUTODOOR_SOURCE_PATH = r"D:\AddFriend\autodoor_behavior_tree"
-DEFAULT_PROJECT_PATH = r"D:\AddFriend\Addfriend"
+LEGACY_AUTODOOR_SOURCE_PATH = r"D:\AddFriend\autodoor_behavior_tree"
+LEGACY_PROJECT_PATH = r"D:\AddFriend\Addfriend"
+LEGACY_EDITOR_EXECUTABLE_PATH = (
+    r"D:\AddFriend\autodoor_behavior_tree\dist\autodoor-behaviortree-1.6.0"
+    r"\autodoor-behaviortree-1.6.0.exe"
+)
 CONFIG_FILE_NAME = "autodoor.json"
 PROJECT_COPY_NAME = "Addfriend"
 STOP_REQUEST_DIR_NAME = "stop_requests"
@@ -89,6 +93,62 @@ class StopRequested(Exception):
     pass
 
 
+def runtime_base_dirs() -> list[Path]:
+    bases: list[Path] = []
+    for base in [Path(__file__).resolve().parents[1], Path.cwd(), Path(sys.executable).resolve().parent]:
+        bases.append(base)
+        bases.extend(base.parents[:2])
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for base in bases:
+        key = str(base).lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(base)
+    return unique
+
+
+def autodoor_editor_path(source_path: Path) -> str:
+    preferred = (
+        source_path
+        / "dist"
+        / "autodoor-behaviortree-1.6.0"
+        / "autodoor-behaviortree-1.6.0.exe"
+    )
+    return str(preferred) if preferred.is_file() else ""
+
+
+def local_autodoor_config() -> AutoDoorConfig | None:
+    for base in runtime_base_dirs():
+        for root in [base / "automation", base]:
+            source_path = root / "autodoor_behavior_tree"
+            project_path = root / "Addfriend"
+            if source_path.is_dir() and project_path.is_dir():
+                return AutoDoorConfig(
+                    autodoor_source_path=str(source_path),
+                    project_path=str(project_path),
+                    editor_executable_path=autodoor_editor_path(source_path),
+                )
+    return None
+
+
+def legacy_autodoor_config() -> AutoDoorConfig:
+    return AutoDoorConfig(
+        autodoor_source_path=LEGACY_AUTODOOR_SOURCE_PATH,
+        project_path=LEGACY_PROJECT_PATH,
+        editor_executable_path=LEGACY_EDITOR_EXECUTABLE_PATH,
+    )
+
+
+def default_autodoor_config() -> AutoDoorConfig:
+    return local_autodoor_config() or legacy_autodoor_config()
+
+
+def is_legacy_path(value: str, legacy: str) -> bool:
+    return value.strip().lower() == legacy.lower()
+
+
 def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -148,10 +208,7 @@ def interprocess_file_lock(lock_file_name: str):
 
 
 def load_config() -> AutoDoorConfig:
-    config = AutoDoorConfig(
-        autodoor_source_path=DEFAULT_AUTODOOR_SOURCE_PATH,
-        project_path=DEFAULT_PROJECT_PATH,
-    )
+    config = default_autodoor_config()
     path = app_data_dir() / CONFIG_FILE_NAME
     if not path.exists():
         return config
@@ -172,8 +229,27 @@ def load_config() -> AutoDoorConfig:
     config.editor_executable_path = str(
         raw.get("editorExecutablePath")
         or raw.get("editor_executable_path")
-        or ""
+        or config.editor_executable_path
     ).strip()
+    defaults = default_autodoor_config()
+    if (
+        is_legacy_path(config.autodoor_source_path, LEGACY_AUTODOOR_SOURCE_PATH)
+        and not is_legacy_path(defaults.autodoor_source_path, LEGACY_AUTODOOR_SOURCE_PATH)
+    ):
+        config.autodoor_source_path = defaults.autodoor_source_path
+    if (
+        is_legacy_path(config.project_path, LEGACY_PROJECT_PATH)
+        and not is_legacy_path(defaults.project_path, LEGACY_PROJECT_PATH)
+    ):
+        config.project_path = defaults.project_path
+    if (
+        not config.editor_executable_path
+        or (
+            is_legacy_path(config.editor_executable_path, LEGACY_EDITOR_EXECUTABLE_PATH)
+            and not is_legacy_path(defaults.editor_executable_path, LEGACY_EDITOR_EXECUTABLE_PATH)
+        )
+    ):
+        config.editor_executable_path = defaults.editor_executable_path
     return config
 
 

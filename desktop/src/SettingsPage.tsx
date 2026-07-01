@@ -12,9 +12,9 @@ import { readErrorDetail } from "./api";
 const APP_VERSION = "0.1.0";
 
 const DEFAULT_AUTODOOR_CONFIG: AutoDoorConfig = {
-  autodoorSourcePath: "D:\\AddFriend\\autodoor_behavior_tree",
-  projectPath: "D:\\AddFriend\\Addfriend",
-  editorExecutablePath: "D:\\AddFriend\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe",
+  autodoorSourcePath: "D:\\FriendAuto\\automation\\autodoor_behavior_tree",
+  projectPath: "D:\\FriendAuto\\automation\\Addfriend",
+  editorExecutablePath: "D:\\FriendAuto\\automation\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe",
 };
 
 interface DeviceInfo {
@@ -384,7 +384,7 @@ function SettingsPage({
                 className="input settings-path-input"
                 value={autoDoorConfig.autodoorSourcePath}
                 onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, autodoorSourcePath: e.target.value }))}
-                placeholder="D:\\AddFriend\\autodoor_behavior_tree"
+                placeholder="D:\\FriendAuto\\automation\\autodoor_behavior_tree"
                 disabled={autoDoorLoading}
               />
             </div>
@@ -394,7 +394,7 @@ function SettingsPage({
                 className="input settings-path-input"
                 value={autoDoorConfig.projectPath}
                 onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, projectPath: e.target.value }))}
-                placeholder="D:\\AddFriend\\Addfriend"
+                placeholder="D:\\FriendAuto\\automation\\Addfriend"
                 disabled={autoDoorLoading}
               />
             </div>
@@ -404,7 +404,7 @@ function SettingsPage({
                 className="input settings-path-input"
                 value={autoDoorConfig.editorExecutablePath}
                 onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, editorExecutablePath: e.target.value }))}
-                placeholder="D:\\AddFriend\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe"
+                placeholder="D:\\FriendAuto\\automation\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe"
                 disabled={autoDoorLoading}
               />
             </div>
