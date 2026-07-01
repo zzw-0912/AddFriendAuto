@@ -63,8 +63,14 @@ class UserDetailResponse(BaseModel):
 
 
 class UpdateMembershipRequest(BaseModel):
-    action: Literal["extend", "freeze", "unfreeze"]
+    action: Literal["extend", "freeze", "unfreeze", "expire"]
     days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class UpdateTrialQuotaRequest(BaseModel):
+    action: Literal["decrement", "set_remaining", "clear"]
+    amount: int | None = Field(default=None, ge=1, le=10_000)
+    remaining_count: int | None = Field(default=None, ge=0, le=10_000)
 
 
 class UpdateDeviceRequest(BaseModel):

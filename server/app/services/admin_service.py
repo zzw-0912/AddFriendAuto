@@ -223,7 +223,96 @@ def update_membership(user_id: int, action: str, days: int | None,
                          f"Unfrozen {len(frozen)} memberships", db)
         return {"success": True, "unfrozen_count": len(frozen)}
 
+    elif action == "expire":
+        expire_at = now - timedelta(seconds=1)
+        active = (
+            db.query(Membership)
+            .filter(
+                Membership.user_id == user_id,
+                Membership.status == "active",
+                Membership.ends_at > expire_at,
+            )
+            .all()
+        )
+        for m in active:
+            m.ends_at = expire_at
+        db.commit()
+        create_audit_log(
+            admin_user_id,
+            "expire_membership",
+            "user",
+            user_id,
+            f"Expired {len(active)} active memberships at {expire_at}",
+            db,
+        )
+        return {"success": True, "expired_count": len(active), "ends_at": str(expire_at)}
+
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown action: {action}")
+
+
+def update_trial_quota(
+    user_id: int,
+    action: str,
+    amount: int | None,
+    remaining_count: int | None,
+    admin_user_id: int,
+    db: Session,
+) -> dict:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    quota = db.query(TrialQuota).filter(TrialQuota.user_id == user_id).first()
+    if not quota:
+        quota = TrialQuota(
+            user_id=user_id,
+            device_id=0,
+            total_count=20,
+            used_count=0,
+            remaining_count=20,
+        )
+        db.add(quota)
+        db.flush()
+
+    old_used = int(quota.used_count or 0)
+    old_remaining = int(quota.remaining_count or 0)
+    total = max(0, int(quota.total_count or 0))
+
+    if action == "decrement":
+        decrement_by = amount or 1
+        new_remaining = max(0, old_remaining - decrement_by)
+    elif action == "set_remaining":
+        if remaining_count is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="remaining_count is required")
+        new_remaining = min(max(0, remaining_count), total)
+    elif action == "clear":
+        new_remaining = 0
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown action: {action}")
+
+    new_remaining = min(max(0, new_remaining), total)
+    quota.remaining_count = new_remaining
+    quota.used_count = max(0, total - new_remaining)
+    db.commit()
+    db.refresh(quota)
+
+    create_audit_log(
+        admin_user_id,
+        "update_trial_quota",
+        "user",
+        user_id,
+        (
+            f"action={action}; used {old_used}->{quota.used_count}; "
+            f"remaining {old_remaining}->{quota.remaining_count}; total={quota.total_count}"
+        ),
+        db,
+    )
+    return {
+        "success": True,
+        "total": quota.total_count,
+        "used": quota.used_count,
+        "remaining": quota.remaining_count,
+    }
 
 
 def list_devices(page: int, page_size: int, db: Session) -> dict:

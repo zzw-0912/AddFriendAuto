@@ -66,6 +66,14 @@ export interface MembershipUpdateResult {
   ends_at?: string;
   frozen_count?: number;
   unfrozen_count?: number;
+  expired_count?: number;
+}
+
+export interface TrialQuotaUpdateResult {
+  success: boolean;
+  total: number;
+  used: number;
+  remaining: number;
 }
 
 export interface DeviceListItem extends UserDetailDevice {
@@ -220,10 +228,20 @@ export async function getUserDetail(userId: number): Promise<UserDetail> {
   return request(`/admin/users/${userId}`);
 }
 
-export async function updateMembership(userId: number, action: "extend" | "freeze" | "unfreeze", days?: number): Promise<MembershipUpdateResult> {
+export async function updateMembership(userId: number, action: "extend" | "freeze" | "unfreeze" | "expire", days?: number): Promise<MembershipUpdateResult> {
   return request(`/admin/users/${userId}/membership`, {
     method: "PATCH",
     body: JSON.stringify({ action, days }),
+  });
+}
+
+export async function updateTrialQuota(
+  userId: number,
+  data: { action: "decrement" | "set_remaining" | "clear"; amount?: number; remaining_count?: number },
+): Promise<TrialQuotaUpdateResult> {
+  return request(`/admin/users/${userId}/trial-quota`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 }
 

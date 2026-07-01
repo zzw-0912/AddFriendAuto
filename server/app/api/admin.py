@@ -15,6 +15,7 @@ from app.schemas.admin import (
     UpdateDeviceRequest,
     UpdateMembershipRequest,
     UpdatePlanRequest,
+    UpdateTrialQuotaRequest,
     UserDetailResponse,
     UserListItem,
 )
@@ -35,6 +36,7 @@ from app.services.admin_service import (
     update_device,
     update_membership,
     update_plan,
+    update_trial_quota,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -72,6 +74,16 @@ def patch_membership(
     db: Session = Depends(get_db),
 ):
     return update_membership(user_id, req.action, req.days, admin.id, db)
+
+
+@router.patch("/users/{user_id}/trial-quota")
+def patch_trial_quota(
+    user_id: int,
+    req: UpdateTrialQuotaRequest,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return update_trial_quota(user_id, req.action, req.amount, req.remaining_count, admin.id, db)
 
 
 @router.get("/devices")
