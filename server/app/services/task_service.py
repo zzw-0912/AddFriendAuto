@@ -257,8 +257,6 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
     targets = (
         db.query(TaskTarget)
         .filter(
-            TaskTarget.user_id == user.id,
-            TaskTarget.target_type == task.target_type,
             TaskTarget.status == "pending",
         )
         .order_by(random_order_expression(db))
@@ -310,7 +308,6 @@ def report_result(
             db.query(TaskTarget)
             .filter(
                 TaskTarget.id == target_id,
-                TaskTarget.user_id == user.id,
                 TaskTarget.claimed_task_id == task_id,
             )
             .with_for_update()
