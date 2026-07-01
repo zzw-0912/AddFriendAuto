@@ -31,6 +31,7 @@ from app.schemas.admin import (
     UserDetailTrial,
     UserListItem,
 )
+from app.services.membership_service import expire_active_memberships, is_membership_current
 from app.services.payment_service import process_order_payment
 
 
@@ -161,7 +162,7 @@ def get_user_detail(user_id: int, db: Session) -> UserDetailResponse:
         if ends and ends.tzinfo:
             ends = ends.replace(tzinfo=None)
         membership_info = UserDetailMembership(
-            is_active=active_membership.status == "active" and ends > datetime.utcnow(),
+            is_active=is_membership_current(active_membership),
             starts_at=active_membership.starts_at,
             ends_at=active_membership.ends_at,
             status=active_membership.status,
@@ -254,28 +255,17 @@ def update_membership(user_id: int, action: str, days: int | None,
         return {"success": True, "unfrozen_count": len(frozen)}
 
     elif action == "expire":
-        expire_at = now - timedelta(seconds=1)
-        active = (
-            db.query(Membership)
-            .filter(
-                Membership.user_id == user_id,
-                Membership.status == "active",
-                Membership.ends_at > expire_at,
-            )
-            .all()
-        )
-        for m in active:
-            m.ends_at = expire_at
+        expired_count, expire_at = expire_active_memberships(db, user_id, now)
         db.commit()
         create_audit_log(
             admin_user_id,
             "expire_membership",
             "user",
             user_id,
-            f"Expired {len(active)} active memberships at {expire_at}",
+            f"Expired {expired_count} active memberships at {expire_at}",
             db,
         )
-        return {"success": True, "expired_count": len(active), "ends_at": str(expire_at)}
+        return {"success": True, "expired_count": expired_count, "ends_at": str(expire_at)}
 
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown action: {action}")
 

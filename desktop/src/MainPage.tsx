@@ -33,7 +33,6 @@ const BOTTOM_NAV_ITEMS = [
   { label: "我的", icon: "profile" },
 ];
 
-const MEMBER_STATUS_CACHE_PREFIX = "friendauto.memberStatus.v1:";
 const MEMBER_STATUS_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 const HERO_SLIDES = [
@@ -94,39 +93,6 @@ function shouldPromptPayment(status: UserStatus | null) {
   return status.trial.remaining <= 0 || isMembershipExpired(status);
 }
 
-function localDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function memberStatusCacheKey(email: string) {
-  return `${MEMBER_STATUS_CACHE_PREFIX}${email}`;
-}
-
-function loadCachedMemberStatus(email: string): UserStatus | null {
-  try {
-    const raw = localStorage.getItem(memberStatusCacheKey(email));
-    if (!raw) return null;
-    const cached = JSON.parse(raw) as { checkedDate?: string; status?: UserStatus };
-    if (cached.checkedDate !== localDateKey()) return null;
-    if (!cached.status?.membership.is_active) return null;
-    return cached.status;
-  } catch {
-    return null;
-  }
-}
-
-function saveMemberStatusCache(email: string, nextStatus: UserStatus) {
-  const key = memberStatusCacheKey(email);
-  if (!nextStatus.membership.is_active) {
-    localStorage.removeItem(key);
-    return;
-  }
-  localStorage.setItem(key, JSON.stringify({ checkedDate: localDateKey(), status: nextStatus }));
-}
-
 function msUntilNextLocalDay() {
   const now = new Date();
   const next = new Date(now);
@@ -136,7 +102,7 @@ function msUntilNextLocalDay() {
 
 function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Props) {
   const { isOffline } = useNetworkStatus();
-  const [status, setStatus] = useState<UserStatus | null>(() => loadCachedMemberStatus(auth.email));
+  const [status, setStatus] = useState<UserStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -147,15 +113,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
   const [taskDefaults] = useState<TaskDefaults>(() => loadTaskDefaults());
   const [taskDefaultsVersion] = useState(0);
 
-  const fetchStatus = useCallback(async (options?: { force?: boolean }) => {
-    if (!options?.force) {
-      const cached = loadCachedMemberStatus(auth.email);
-      if (cached) {
-        setStatus(cached);
-        return cached;
-      }
-    }
-
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`${apiBase}/me/status`, {
         headers: { Authorization: `Bearer ${auth.token}` },
@@ -167,14 +125,13 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
       if (res.ok) {
         const nextStatus = await res.json() as UserStatus;
         setStatus(nextStatus);
-        saveMemberStatusCache(auth.email, nextStatus);
         return nextStatus;
       }
     } catch {
       // network error — OfflineBanner handles the UI feedback
     }
     return null;
-  }, [apiBase, auth.email, auth.token, onLogout]);
+  }, [apiBase, auth.token, onLogout]);
 
   useEffect(() => {
     void fetchStatus();
@@ -185,9 +142,9 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const timeoutId = setTimeout(() => {
-      void fetchStatus({ force: true });
+      void fetchStatus();
       intervalId = setInterval(() => {
-        void fetchStatus({ force: true });
+        void fetchStatus();
       }, MEMBER_STATUS_REFRESH_MS);
     }, msUntilNextLocalDay());
 

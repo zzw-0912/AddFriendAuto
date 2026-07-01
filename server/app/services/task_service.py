@@ -9,13 +9,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
-from app.models.membership import Membership
 from app.models.task import Task
 from app.models.task_result import TaskResult
 from app.models.task_target import TaskTarget
 from app.models.trial_quota import TrialQuota
 from app.models.user import User
 from app.schemas.status import MembershipInfo, TrialInfo
+from app.services.membership_service import get_current_membership
 from app.schemas.task import ClaimTargetsResponse, StartCheckResponse, TaskResponse, TaskTargetItem
 
 
@@ -163,16 +163,7 @@ def start_check(
     device_id = device.id if device else 0
 
     membership_info = MembershipInfo()
-    active_membership = (
-        db.query(Membership)
-        .filter(
-            Membership.user_id == user.id,
-            Membership.status == "active",
-            Membership.ends_at > datetime.utcnow(),
-        )
-        .order_by(Membership.ends_at.desc())
-        .first()
-    )
+    active_membership = get_current_membership(db, user.id)
     if active_membership:
         membership_info = MembershipInfo(
             is_active=True,
@@ -333,16 +324,7 @@ def report_result(
     if event == "success":
         quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).with_for_update().first()
         if quota and quota.remaining_count > 0:
-            active_membership = (
-                db.query(Membership)
-                .filter(
-                    Membership.user_id == user.id,
-                    Membership.status == "active",
-                    Membership.ends_at > datetime.utcnow(),
-                )
-                .order_by(Membership.ends_at.desc())
-                .first()
-            )
+            active_membership = get_current_membership(db, user.id)
             if not active_membership:
                 quota.used_count += 1
                 quota.remaining_count -= 1
