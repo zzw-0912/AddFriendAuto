@@ -413,7 +413,7 @@ function TaskPanel({
           <h3 className="section-title">微信{slotId}任务配置</h3>
           <div className="task-shortcuts">
             <button className="task-shortcut task-shortcut-warning" type="button" onClick={onOpenTutorial}>
-              注意事项
+              启动前必看
             </button>
             <button className="task-shortcut task-shortcut-upgrade" type="button" onClick={onOpenPayment}>
               增加微信加人窗口
