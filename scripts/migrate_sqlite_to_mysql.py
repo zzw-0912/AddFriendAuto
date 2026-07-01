@@ -19,6 +19,7 @@ APP_TABLES = [
     "memberships",
     "orders",
     "plans",
+    "task_targets",
     "task_results",
     "tasks",
     "trial_quotas",
