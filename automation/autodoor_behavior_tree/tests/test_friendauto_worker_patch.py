@@ -93,6 +93,54 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
             self.assertEqual(config.get("x_float"), 0, node_id)
             self.assertEqual(config.get("y_float"), 0, node_id)
 
+    def test_patch_marks_missing_search_result_invalid_and_recovers_search_box(self):
+        temp_dir, tree_file = self._copy_tree()
+        self.addCleanup(temp_dir.cleanup)
+
+        patched = worker.patch_tree(tree_file, self._task_config())
+
+        with tree_file.open("r", encoding="utf-8") as f:
+            tree_data = json.load(f)
+
+        nodes = tree_data["nodes"]
+        parents = worker.parent_map(nodes)
+        not_found_ids = set(patched["not_found_ids"])
+        self.assertGreater(len(not_found_ids), 0)
+
+        for node_id in not_found_ids:
+            node = nodes[node_id]
+            config = worker.get_config(node)
+            self.assertEqual(worker.node_type(node), "ImageConditionNode")
+            self.assertTrue(worker.contains_any(worker.node_name(node), worker.ADD_TO_CONTACTS_KEYWORDS))
+            self.assertEqual(node.get("children"), [])
+            self.assertEqual(config.get("retry_count"), worker.SEARCH_RESULT_RETRY_COUNT)
+            self.assertEqual(config.get("repeat_interval_ms"), worker.SEARCH_RESULT_RETRY_INTERVAL_MS)
+
+            parent_id = parents[node_id]
+            parent_children = [str(child_id) for child_id in nodes[parent_id].get("children", [])]
+            self.assertIn(node_id, parent_children)
+            self.assertLess(parent_children.index(node_id), len(parent_children) - 1)
+
+        cleanup_start_ids = [
+            node_id
+            for node_id, node in nodes.items()
+            if worker.node_type(node) == "StartNode"
+            and any(
+                child_id in nodes and worker.contains_any(worker.node_name(nodes[child_id]), worker.SEARCH_CLEANUP_KEYWORDS)
+                for child_id in node.get("children", []) or []
+            )
+        ]
+        self.assertGreater(len(cleanup_start_ids), 0)
+
+        add_friend_start_ids = [
+            node_id
+            for node_id, node in nodes.items()
+            if worker.node_type(node) == "StartNode"
+            and worker.contains_any(worker.get_config(node).get("window_title", ""), ["添加朋友"])
+            and any(str(child_id) in cleanup_start_ids for child_id in node.get("children", []) or [])
+        ]
+        self.assertGreater(len(add_friend_start_ids), 0)
+
     def test_patch_requires_bound_wechat_window(self):
         temp_dir, tree_file = self._copy_tree()
         self.addCleanup(temp_dir.cleanup)

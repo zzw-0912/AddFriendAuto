@@ -39,7 +39,11 @@ GREETING_KEYWORDS = ["输入申请语", "申请语"]
 VALIDATION_KEYWORDS = ["判断是否输入正确", "输入正确"]
 CONFIRM_CLICK_KEYWORDS = ["点击确定", "确定"]
 KEY_FAILURE_KEYWORDS = ["发送添加好友申请", "添加到通讯录", "输入申请语"]
+ADD_TO_CONTACTS_KEYWORDS = ["添加到通讯录"]
+SEARCH_CLEANUP_KEYWORDS = ["叉", "点击叉"]
 WECHAT_START_KEYWORDS = ["微信", "添加朋友", "申请添加朋友"]
+SEARCH_RESULT_RETRY_COUNT = 8
+SEARCH_RESULT_RETRY_INTERVAL_MS = 500
 BOOTSTRAP_MAX_ATTEMPTS = 2
 BOOTSTRAP_RETRY_MAX_SECONDS = 8.0
 BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
@@ -82,6 +86,7 @@ class PreparedRun:
     phone_numbers: list[str]
     phone_input_ids: set[str]
     validation_ids: set[str]
+    not_found_ids: set[str]
     confirm_click_ids: set[str]
     key_failure_ids: set[str]
 
@@ -655,6 +660,115 @@ def patch_skip_tag_flow(tree_data: dict[str, Any], node_ids: list[str], greeting
             set_node_enabled(node, False)
 
 
+def int_config_value(config: dict[str, Any], key: str, default: int = 0) -> int:
+    value = config.get(key, default)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def nearest_start_ancestor(
+    nodes: dict[str, dict[str, Any]],
+    parents: dict[str, str],
+    node_id: str,
+    title_keywords: list[str],
+) -> str | None:
+    current = parents.get(node_id)
+    while current:
+        node = nodes.get(current)
+        if node and node_type(node) == "StartNode":
+            config = get_config(node)
+            if config.get("bind_window") and contains_any(config.get("window_title", ""), title_keywords):
+                return current
+        current = parents.get(current)
+    return None
+
+
+def find_search_cleanup_start(nodes: dict[str, dict[str, Any]], node_ids: list[str]) -> str | None:
+    node_id_set = set(node_ids)
+    for node_id in node_ids:
+        node = nodes[node_id]
+        if node_type(node) != "StartNode":
+            continue
+        config = get_config(node)
+        if not config.get("bind_window") or not contains_any(config.get("window_title", ""), ["添加朋友"]):
+            continue
+        for child_id in node.get("children", []) or []:
+            child = nodes.get(str(child_id))
+            if child and str(child_id) in node_id_set and contains_any(node_name(child), SEARCH_CLEANUP_KEYWORDS):
+                return node_id
+    return None
+
+
+def patch_search_not_found_recovery(tree_data: dict[str, Any], node_ids: list[str]) -> set[str]:
+    nodes = tree_data.get("nodes", {})
+    parents = parent_map(nodes)
+    active_ids = set(node_ids)
+    not_found_ids: set[str] = set()
+    cleanup_start_id = find_search_cleanup_start(nodes, node_ids)
+
+    for node_id in node_ids:
+        node = nodes[node_id]
+        if node_type(node) != "ImageConditionNode":
+            continue
+        if not contains_any(node_name(node), ADD_TO_CONTACTS_KEYWORDS):
+            continue
+
+        not_found_ids.add(node_id)
+        config = get_config(node)
+        if int_config_value(config, "retry_count") < SEARCH_RESULT_RETRY_COUNT:
+            config["retry_count"] = SEARCH_RESULT_RETRY_COUNT
+        config["repeat_interval_ms"] = SEARCH_RESULT_RETRY_INTERVAL_MS
+
+        success_children = [str(child_id) for child_id in node.get("children", []) or [] if str(child_id) in nodes]
+        if not success_children:
+            continue
+
+        node["children"] = []
+        parent_id = parents.get(node_id)
+        if not parent_id or parent_id not in nodes:
+            continue
+
+        parent_children = [str(child_id) for child_id in nodes[parent_id].get("children", []) or []]
+        patched_children: list[str] = []
+        for child_id in parent_children:
+            if child_id not in nodes or child_id in patched_children:
+                continue
+            patched_children.append(child_id)
+            if child_id == node_id:
+                for success_child in success_children:
+                    if success_child not in patched_children:
+                        patched_children.append(success_child)
+        set_children(nodes, parent_id, patched_children)
+
+    if cleanup_start_id:
+        parents = parent_map(nodes)
+        cleanup_parent_id = parents.get(cleanup_start_id)
+        for node_id in not_found_ids:
+            search_start_id = nearest_start_ancestor(nodes, parents, node_id, ["添加朋友"])
+            if not search_start_id or search_start_id == cleanup_start_id:
+                continue
+
+            if cleanup_parent_id and cleanup_parent_id in nodes and cleanup_parent_id != search_start_id:
+                set_children(
+                    nodes,
+                    cleanup_parent_id,
+                    [str(child_id) for child_id in nodes[cleanup_parent_id].get("children", []) or [] if str(child_id) != cleanup_start_id],
+                )
+
+            search_children = [str(child_id) for child_id in nodes[search_start_id].get("children", []) or []]
+            if cleanup_start_id not in search_children and cleanup_start_id in active_ids:
+                search_children.append(cleanup_start_id)
+                set_children(nodes, search_start_id, search_children)
+
+    return not_found_ids
+
+
 def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
     with tree_file.open("r", encoding="utf-8") as f:
         tree_data = json.load(f)
@@ -733,6 +847,8 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         patch_skip_tag_flow(tree_data, active_ids, greeting_ids)
         active_ids = reachable_enabled_ids(nodes, root_id)
 
+    not_found_ids = patch_search_not_found_recovery(tree_data, active_ids)
+    active_ids = reachable_enabled_ids(nodes, root_id)
     stabilized_clicks = stabilize_bound_window_clicks(nodes, active_ids)
 
     validation_ids = {
@@ -764,6 +880,7 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         "phone_numbers": phone_numbers,
         "phone_input_ids": target_input_ids,
         "validation_ids": validation_ids,
+        "not_found_ids": not_found_ids,
         "confirm_click_ids": confirm_click_ids,
         "key_failure_ids": key_failure_ids,
         "disabled_accounts": disabled_accounts,
@@ -808,6 +925,7 @@ def prepare_run(config: AutoDoorConfig, task_config: dict[str, Any]) -> Prepared
         phone_numbers=patched["phone_numbers"],
         phone_input_ids=set(patched["phone_input_ids"]),
         validation_ids=set(patched["validation_ids"]),
+        not_found_ids=set(patched["not_found_ids"]),
         confirm_click_ids=set(patched["confirm_click_ids"]),
         key_failure_ids=set(patched["key_failure_ids"]),
     )
@@ -1003,6 +1121,10 @@ def run_autodoor_once(
 
         if status == "failure" and node_id in prepared.validation_ids:
             mark_terminal("invalid", "手机号输入校验失败")
+            return
+
+        if status == "failure" and node_id in prepared.not_found_ids:
+            mark_terminal("invalid", "未找到该用户，继续处理下一条")
             return
 
         if status == "success" and node_id in prepared.confirm_click_ids:

@@ -1121,7 +1121,7 @@ class ConditionNode(Node):
             f"consecutive_same={self._consecutive_same_count}"
         )
 
-        if status != NodeStatus.RUNNING and self.children:
+        if status == NodeStatus.SUCCESS and self.children:
             context.notify_node_status(self.node_id, "success")
             self._children_running = True
             return self._execute_children(context)

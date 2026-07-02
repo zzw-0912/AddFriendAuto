@@ -87,12 +87,6 @@ function isMembershipExpired(status: UserStatus | null) {
   return Number.isFinite(endsAt) && endsAt <= Date.now();
 }
 
-function shouldPromptPayment(status: UserStatus | null) {
-  if (!status) return false;
-  if (status.membership.is_active) return false;
-  return status.trial.remaining <= 0 || isMembershipExpired(status);
-}
-
 function msUntilNextLocalDay() {
   const now = new Date();
   const next = new Date(now);
@@ -165,14 +159,10 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
   const planId = status?.membership.plan_id;
   const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+  const trialRemaining = Math.max(0, status?.trial.remaining ?? 0);
   const membershipExpired = isMembershipExpired(status);
-  const canSkipTrialPayment = (status?.trial.remaining ?? 0) > 0 && !membershipExpired;
-
-  useEffect(() => {
-    if (shouldPromptPayment(status)) {
-      setShowPayment(true);
-    }
-  }, [status]);
+  const showExpiredBadge = membershipExpired && trialRemaining <= 0;
+  const canSkipTrialPayment = trialRemaining > 0;
 
   const renderMainContent = () => {
     if (activeNav === "我的") {
@@ -402,7 +392,12 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
                   <span>会员有效至 {formatDate(status.membership.ends_at)}</span>
                 </div>
               )}
-              {membershipExpired ? (
+              {!status?.membership.is_active && trialRemaining > 0 ? (
+                <div className="status-badge trial">
+                  <span className="dot" />
+                  <span>剩余试用 {trialRemaining} 次</span>
+                </div>
+              ) : showExpiredBadge ? (
                 <div className="status-badge trial">
                   <span className="dot" />
                   <span>会员已过期</span>
@@ -410,7 +405,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               ) : (!status || !status.membership.is_active) && (
                 <div className="status-badge trial">
                   <span className="dot" />
-                  <span>剩余试用 {status?.trial.remaining ?? 20} 次</span>
+                  <span>剩余试用 {status ? trialRemaining : 20} 次</span>
                 </div>
               )}
               <span className="user-email">{auth.email}</span>

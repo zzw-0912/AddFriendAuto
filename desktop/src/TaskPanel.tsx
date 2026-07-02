@@ -265,11 +265,15 @@ function TaskPanel({
           break;
         case "failed":
           processedResultKeysRef.current.add(resultKey);
-          void reportResult(data.contact_id, data.target_id, data.event, msg);
+          void reportResult(data.contact_id, data.target_id, data.event, msg).then((result) => {
+            if (result?.charged) void refreshAccessLog();
+          });
           break;
         case "invalid":
           processedResultKeysRef.current.add(resultKey);
-          void reportResult(data.contact_id, data.target_id, data.event, msg);
+          void reportResult(data.contact_id, data.target_id, data.event, msg).then((result) => {
+            if (result?.charged) void refreshAccessLog();
+          });
           break;
         case "error":
           addUniqueLog("任务运行异常，请稍后重试", "error");

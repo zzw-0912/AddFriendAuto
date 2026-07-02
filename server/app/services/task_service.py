@@ -21,6 +21,7 @@ from app.schemas.task import ClaimTargetsResponse, StartCheckResponse, TaskRespo
 
 STALE_RUNNING_TASK_HOURS = 12
 VALID_TARGET_TYPES = {"contact", "phone", "wechat_id"}
+TRIAL_CHARGE_EVENTS = {"success", "failed", "invalid"}
 
 
 def random_claim_limit(daily_limit: int | None) -> int:
@@ -321,7 +322,7 @@ def report_result(
         return {"charged": existing.trial_charged, "duplicate": True}
 
     charged = False
-    if event == "success":
+    if event in TRIAL_CHARGE_EVENTS:
         quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).with_for_update().first()
         if quota and quota.remaining_count > 0:
             active_membership = get_current_membership(db, user.id)
