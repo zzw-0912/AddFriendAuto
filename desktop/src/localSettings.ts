@@ -1,7 +1,9 @@
 import {
+  ADD_INTERVAL_MINUTE_OPTIONS,
   DEFAULT_TASK_DEFAULTS,
   TASK_SLOT_CONFIGS_STORAGE_KEY,
   WECHAT_BINDINGS_STORAGE_KEY,
+  type AddIntervalMinutes,
   type TaskDefaults,
   type WeChatWindowBinding,
 } from "./types";
@@ -16,10 +18,19 @@ function normalizeGreetingPresets(value: unknown, fallback: TaskDefaults["greeti
   });
 }
 
+function normalizeAddIntervalMinutes(value: unknown, fallback: AddIntervalMinutes): AddIntervalMinutes {
+  const minutes = Number(value);
+  if (ADD_INTERVAL_MINUTE_OPTIONS.includes(minutes as AddIntervalMinutes)) {
+    return minutes as AddIntervalMinutes;
+  }
+  return fallback;
+}
+
 export function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null | undefined, fallback = DEFAULT_TASK_DEFAULTS): TaskDefaults {
   return {
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || fallback.dailyLimit)),
+    addIntervalMinutes: normalizeAddIntervalMinutes(defaults?.addIntervalMinutes, fallback.addIntervalMinutes),
     createTag: Boolean(defaults?.createTag),
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : fallback.greetingText,
     greetingPresets: normalizeGreetingPresets(defaults?.greetingPresets, fallback.greetingPresets),

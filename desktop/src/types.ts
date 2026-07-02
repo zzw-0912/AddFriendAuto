@@ -1,8 +1,12 @@
 export type TargetType = "contact" | "phone" | "wechat_id";
+export type AddIntervalMinutes = 5 | 10 | 20;
+
+export const ADD_INTERVAL_MINUTE_OPTIONS: AddIntervalMinutes[] = [5, 10, 20];
 
 export interface TaskDefaults {
   targetType: TargetType;
   dailyLimit: number;
+  addIntervalMinutes: AddIntervalMinutes;
   createTag: boolean;
   greetingText: string;
   greetingPresets: string[];
@@ -38,6 +42,7 @@ export const WECHAT_BINDINGS_STORAGE_KEY = "friendauto.wechatBindings.v1";
 export const DEFAULT_TASK_DEFAULTS: TaskDefaults = {
   targetType: "contact",
   dailyLimit: 20,
+  addIntervalMinutes: 5,
   createTag: false,
   greetingText: "",
   greetingPresets: [

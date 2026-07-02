@@ -707,6 +707,7 @@
   display: flex;
   gap: 16px;
   align-items: flex-end;
+  flex-wrap: wrap;
 }
 
 .task-card .config-row .field { flex: 1; }
@@ -714,12 +715,60 @@
   flex: 0 1 262px;
   max-width: 262px;
 }
+.task-card .config-row .add-interval-field {
+  flex: 0 1 320px;
+  max-width: 320px;
+}
 .task-card .config-row .target-type-field {
   flex: 0 1 180px;
   max-width: 180px;
 }
 .task-card .config-input { width: 100%; }
 .task-card .config-textarea { width: 100%; resize: vertical; }
+
+.add-interval-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 42px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f7faff;
+}
+
+.add-interval-option {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.add-interval-option:hover:not(:disabled) {
+  color: var(--blue);
+  background: #fff;
+  border-color: rgba(47, 109, 246, 0.18);
+}
+
+.add-interval-option.active {
+  color: #174ee6;
+  background: #fff;
+  border-color: rgba(47, 109, 246, 0.28);
+  box-shadow: 0 4px 10px rgba(47, 109, 246, 0.12);
+}
+
+.add-interval-option:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
 
 .task-card .greeting-presets {
   display: grid;
@@ -2295,7 +2344,7 @@
 
 .settings-form-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr) minmax(160px, 0.65fr);
   gap: 16px;
   align-items: end;
 }

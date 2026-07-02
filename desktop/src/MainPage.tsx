@@ -7,8 +7,10 @@ import TaskCard from "./TaskCard";
 import OfflineBanner from "./OfflineBanner";
 import { useNetworkStatus } from "./useNetworkStatus";
 import {
+  ADD_INTERVAL_MINUTE_OPTIONS,
   DEFAULT_TASK_DEFAULTS,
   TASK_DEFAULTS_STORAGE_KEY,
+  type AddIntervalMinutes,
   type TaskDefaults,
   type UserStatus,
 } from "./types";
@@ -54,6 +56,7 @@ const HERO_SLIDES = [
 ];
 
 function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
+  const addIntervalMinutes = Number(defaults?.addIntervalMinutes);
   const rawGreetingPresets = defaults?.greetingPresets;
   const greetingPresets = Array.isArray(rawGreetingPresets)
     ? DEFAULT_TASK_DEFAULTS.greetingPresets.map((fallback, index) => {
@@ -65,6 +68,9 @@ function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefa
   return {
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
+    addIntervalMinutes: ADD_INTERVAL_MINUTE_OPTIONS.includes(addIntervalMinutes as AddIntervalMinutes)
+      ? addIntervalMinutes as AddIntervalMinutes
+      : DEFAULT_TASK_DEFAULTS.addIntervalMinutes,
     createTag: Boolean(defaults?.createTag),
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,
     greetingPresets,

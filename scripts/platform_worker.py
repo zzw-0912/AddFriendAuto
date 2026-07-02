@@ -49,6 +49,8 @@ BOOTSTRAP_RETRY_MAX_SECONDS = 8.0
 BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
 AUTOMATION_LOCK_FILE_NAME = "automation.lock"
 CLIPBOARD_LOCK_FILE_NAME = "clipboard.lock"
+ADD_INTERVAL_MINUTE_OPTIONS = {5, 10, 20}
+DEFAULT_ADD_INTERVAL_MINUTES = 5
 
 
 @dataclass
@@ -536,6 +538,17 @@ def parse_wechat_binding(task_config: dict[str, Any]) -> dict[str, Any] | None:
     return {"hwnd": hwnd, "pid": pid, "title": title, "display_name": display_name}
 
 
+def parse_add_interval_ms(task_config: dict[str, Any]) -> int:
+    raw = task_config.get("add_interval_minutes", task_config.get("addIntervalMinutes"))
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        minutes = DEFAULT_ADD_INTERVAL_MINUTES
+    if minutes not in ADD_INTERVAL_MINUTE_OPTIONS:
+        minutes = DEFAULT_ADD_INTERVAL_MINUTES
+    return minutes * 60 * 1000
+
+
 def apply_wechat_binding(nodes: dict[str, dict[str, Any]], node_ids: list[str], binding: dict[str, Any]) -> int:
     patched = 0
     for node_id in node_ids:
@@ -840,7 +853,7 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
     if root_id in nodes:
         root_config = get_config(nodes[root_id])
         root_config["repeat_count"] = max(0, len(phone_numbers) - 1)
-        root_config.setdefault("repeat_interval_ms", "2000")
+        root_config["repeat_interval_ms"] = str(parse_add_interval_ms(task_config))
 
     greeting_ids = patch_greeting(tree_data, active_ids, str(task_config.get("greeting_text") or "").strip())
     if not bool(task_config.get("create_tag")):

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  ADD_INTERVAL_MINUTE_OPTIONS,
   DEFAULT_TASK_DEFAULTS,
+  type AddIntervalMinutes,
   type AutoDoorConfig,
   type TaskDefaults,
   type UserStatus,
@@ -42,6 +44,7 @@ interface SettingsPageProps {
 }
 
 function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
+  const addIntervalMinutes = Number(defaults.addIntervalMinutes);
   const greetingPresets = DEFAULT_TASK_DEFAULTS.greetingPresets.map((fallback, index) => {
     const preset = defaults.greetingPresets?.[index];
     return typeof preset === "string" ? preset.trim() : fallback;
@@ -50,6 +53,9 @@ function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
   return {
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
+    addIntervalMinutes: ADD_INTERVAL_MINUTE_OPTIONS.includes(addIntervalMinutes as AddIntervalMinutes)
+      ? addIntervalMinutes as AddIntervalMinutes
+      : DEFAULT_TASK_DEFAULTS.addIntervalMinutes,
     createTag: Boolean(defaults.createTag),
     greetingText: defaults.greetingText.trim(),
     greetingPresets,
@@ -348,6 +354,21 @@ function SettingsPage({
                 value={defaultsForm.dailyLimit}
                 onChange={(e) => setDefaultsForm((prev) => ({ ...prev, dailyLimit: Number(e.target.value) }))}
               />
+            </div>
+            <div className="field">
+              <label>加人间隔</label>
+              <div className="add-interval-options" role="radiogroup" aria-label="默认加人间隔">
+                {ADD_INTERVAL_MINUTE_OPTIONS.map((minutes) => (
+                  <button
+                    key={minutes}
+                    type="button"
+                    className={`add-interval-option${defaultsForm.addIntervalMinutes === minutes ? " active" : ""}`}
+                    onClick={() => setDefaultsForm((prev) => ({ ...prev, addIntervalMinutes: minutes }))}
+                  >
+                    {minutes}分钟
+                  </button>
+                ))}
+              </div>
             </div>
             <label className="settings-check-row">
               <input

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNetworkStatus } from "./useNetworkStatus";
 import { loadTaskSlotConfig, loadWeChatBindings, saveTaskSlotConfig } from "./localSettings";
-import type { TargetType, TaskDefaults, UserStatus } from "./types";
+import { ADD_INTERVAL_MINUTE_OPTIONS, type TargetType, type TaskDefaults, type UserStatus } from "./types";
 
 interface Props {
   apiBase: string;
@@ -123,6 +123,7 @@ function TaskPanel({
   const { isOnline } = useNetworkStatus();
   const [targetType, setTargetType] = useState<TargetType>(() => loadTaskSlotConfig(slotId, taskDefaults).targetType);
   const [dailyLimit, setDailyLimit] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).dailyLimit);
+  const [addIntervalMinutes, setAddIntervalMinutes] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).addIntervalMinutes);
   const [createTag, setCreateTag] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).createTag);
   const [greetingText, setGreetingText] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingText);
   const [greetingPresets, setGreetingPresets] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingPresets);
@@ -328,6 +329,7 @@ function TaskPanel({
     const slotConfig = loadTaskSlotConfig(slotId, taskDefaults);
     setTargetType(slotConfig.targetType);
     setDailyLimit(slotConfig.dailyLimit);
+    setAddIntervalMinutes(slotConfig.addIntervalMinutes);
     setCreateTag(slotConfig.createTag);
     setGreetingText(slotConfig.greetingText);
     setGreetingPresets(slotConfig.greetingPresets);
@@ -357,7 +359,7 @@ function TaskPanel({
   };
 
   const handleSaveConfig = () => {
-    const nextConfig = { targetType, dailyLimit, createTag, greetingText, greetingPresets };
+    const nextConfig = { targetType, dailyLimit, addIntervalMinutes, createTag, greetingText, greetingPresets };
     saveTaskSlotConfig(slotId, nextConfig);
     addUniqueLog("任务配置已保存", "success");
   };
@@ -449,6 +451,7 @@ function TaskPanel({
         slot_id: slotId,
         target_type: claimData.target_type,
         daily_limit: dailyLimit,
+        add_interval_minutes: addIntervalMinutes,
         create_tag: createTag,
         greeting_text: greetingText,
         wechat_binding: wechatBinding,
@@ -537,6 +540,22 @@ function TaskPanel({
                 onChange={(e) => setDailyLimit(Math.max(1, parseInt(e.target.value) || 1))}
                 disabled={isRunning}
               />
+            </div>
+            <div className="field add-interval-field">
+              <label>加人间隔</label>
+              <div className="add-interval-options" role="radiogroup" aria-label="加人间隔">
+                {ADD_INTERVAL_MINUTE_OPTIONS.map((minutes) => (
+                  <button
+                    key={minutes}
+                    type="button"
+                    className={`add-interval-option${addIntervalMinutes === minutes ? " active" : ""}`}
+                    disabled={isRunning}
+                    onClick={() => setAddIntervalMinutes(minutes)}
+                  >
+                    {minutes}分钟
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <div className="field">
