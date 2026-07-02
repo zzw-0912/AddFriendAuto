@@ -1042,7 +1042,8 @@
   min-height: 80px;
   max-height: 220px;
   overflow-y: auto;
-  background: #1e1e2e;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
 }
@@ -1056,16 +1057,16 @@
 
 .task-card .log-line {
   font-size: 11px;
-  color: #d4d4d4;
+  color: var(--text-soft);
   margin: 1px 0;
   font-family: monospace;
   white-space: pre-wrap;
 }
 
-.task-card .log-line.log-normal { color: #d4d4d4; }
-.task-card .log-line.log-success { color: #4ade80; }
-.task-card .log-line.log-failed { color: #f87171; }
-.task-card .log-line.log-invalid { color: #fbbf24; }
+.task-card .log-line.log-normal { color: var(--text-soft); }
+.task-card .log-line.log-success { color: var(--green); }
+.task-card .log-line.log-failed { color: #b42318; }
+.task-card .log-line.log-invalid { color: #b45309; }
 
 /* ─── Terminal ────────────────────────────────────── */
 .terminal-card {
@@ -1073,8 +1074,8 @@
   min-height: 260px;
   display: flex;
   flex-direction: column;
-  background: #0d1117;
-  border: 1px solid #1e2a3a;
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -1083,9 +1084,10 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: #161b22;
-  border-bottom: 1px solid #1e2a3a;
+  background: linear-gradient(180deg, #ffffff 0%, var(--panel-soft) 100%);
+  border-bottom: 1px solid var(--line-soft);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .terminal-dots { display: flex; gap: 6px; }
 .terminal-dot {
@@ -1098,8 +1100,21 @@
 .terminal-dot.dot-green { background: #27c93f; }
 .terminal-title {
   font-size: 14px;
-  color: #c9d1d9;
+  color: var(--text);
   font-weight: 700;
+}
+.terminal-safety {
+  margin-left: auto;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--orange-bg);
+  border: 1px solid rgba(244, 161, 26, 0.22);
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: normal;
 }
 .terminal-body {
   flex: 1;
@@ -1109,6 +1124,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--panel-soft) 100%);
 }
 .term-line {
   font-size: 14px;
@@ -1121,7 +1137,7 @@
   margin-bottom: 6px;
 }
 .term-status {
-  color: #c9d1d9;
+  color: var(--text-soft);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1131,36 +1147,36 @@
   font-size: 10px;
 }
 .term-ok {
-  color: #3fb950;
+  color: var(--green);
   font-size: 12px;
   margin-left: auto;
 }
 .term-ready {
-  color: #3fb950;
+  color: var(--green);
   font-weight: 600;
   margin-top: 8px;
 }
 .term-log {
-  color: #c9d1d9;
+  color: var(--text-soft);
   white-space: pre-wrap;
   word-break: break-word;
 }
 .term-log-info {
-  color: #79c0ff;
+  color: var(--blue);
 }
 .term-log-normal {
-  color: #c9d1d9;
+  color: var(--text-soft);
 }
 .term-log-success {
-  color: #3fb950;
+  color: var(--green);
 }
 .term-log-failed,
 .term-log-invalid,
 .term-log-error {
-  color: #ff7b72;
+  color: #b42318;
 }
 .term-cursor {
-  color: #3fb950;
+  color: var(--blue);
   font-family: monospace;
   font-size: 14px;
   animation: blink 1s step-end infinite;
@@ -1168,16 +1184,6 @@
 @keyframes blink {
   50% { opacity: 0; }
 }
-.terminal-footer {
-  padding: 12px 22px;
-  background: #0d1117;
-  border-top: 1px solid #1e2a3a;
-  font-size: 13px;
-  color: #fbbf24;
-  line-height: 1.5;
-  flex-shrink: 0;
-}
-
 /* ─── Toast ──────────────────────────────────────── */
 .toast {
   position: fixed;

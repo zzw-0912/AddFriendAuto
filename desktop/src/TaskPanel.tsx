@@ -66,9 +66,8 @@ interface LogEntry {
 let logId = 0;
 
 const BOOT_STEPS = [
-  "正在准备任务",
-  "正在检查微信窗口",
-  "正在同步免费额度",
+  "AI模型正在思考中",
+  "AI模型正在搜索中",
 ];
 
 const START_DELAY_SECONDS = 5;
@@ -256,10 +255,10 @@ function TaskPanel({
 
       switch (data.event) {
         case "started":
-          addUniqueLog("开始加微信好友", "info");
+          addUniqueLog("AI模型正在思考中", "info");
           break;
         case "progress":
-          addUniqueLog("正在加微信好友", "normal");
+          addUniqueLog("AI模型正在搜索中", "normal");
           break;
         case "success":
           processedResultKeysRef.current.add(resultKey);
@@ -287,10 +286,10 @@ function TaskPanel({
           finishCurrentTask();
           break;
         default:
-          addUniqueLog("任务正在运行", "normal");
+          addUniqueLog("AI模型正在搜索中", "normal");
       }
     } catch {
-      addUniqueLog("任务正在运行", "normal");
+      addUniqueLog("AI模型正在搜索中", "normal");
     }
   }, [addUniqueLog, finishCurrentTask, refreshAccessLog, reportResult, slotId]);
 
@@ -583,6 +582,7 @@ function TaskPanel({
             <span className="terminal-dot dot-green" />
           </div>
           <span className="terminal-title">任务提醒</span>
+          <span className="terminal-safety">运行期间请不要操作鼠标和键盘</span>
         </div>
         <div className="terminal-body">
           <div className="term-line term-title">任务状态</div>
@@ -602,9 +602,6 @@ function TaskPanel({
             </div>
           ))}
           <div ref={logEndRef} />
-        </div>
-        <div className="terminal-footer">
-          运行期间请不要操作鼠标和键盘
         </div>
       </div>
 
