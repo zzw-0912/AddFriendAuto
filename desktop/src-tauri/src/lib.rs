@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
@@ -54,12 +55,110 @@ fn data_dir() -> PathBuf {
     path
 }
 
-fn default_autodoor_config() -> AutoDoorConfig {
-    AutoDoorConfig {
-        autodoor_source_path: r"D:\AddFriend\autodoor_behavior_tree".to_string(),
-        project_path: r"D:\AddFriend\Addfriend".to_string(),
-        editor_executable_path: r"D:\AddFriend\autodoor_behavior_tree\dist\autodoor-behaviortree-1.6.0\autodoor-behaviortree-1.6.0.exe".to_string(),
+fn safe_run_id(value: &str) -> String {
+    let mut text: String = value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(80)
+        .collect();
+    if text.is_empty() {
+        text = "manual".to_string();
     }
+    text
+}
+
+fn stop_request_path(run_id: &str) -> PathBuf {
+    let dir = data_dir().join("stop_requests");
+    std::fs::create_dir_all(&dir).ok();
+    dir.join(format!("{}.stop", safe_run_id(run_id)))
+}
+
+fn write_stop_request(run_id: &str) -> Result<(), String> {
+    let path = stop_request_path(run_id);
+    std::fs::write(path, "stop").map_err(|e| e.to_string())
+}
+
+fn clear_stop_request(run_id: &str) {
+    let path = stop_request_path(run_id);
+    let _ = std::fs::remove_file(path);
+}
+
+const LEGACY_AUTODOOR_SOURCE_PATH: &str = r"D:\AddFriend\autodoor_behavior_tree";
+const LEGACY_PROJECT_PATH: &str = r"D:\AddFriend\Addfriend";
+const LEGACY_EDITOR_EXECUTABLE_PATH: &str = r"D:\AddFriend\autodoor_behavior_tree\dist\autodoor-behaviortree-1.6.0\autodoor-behaviortree-1.6.0.exe";
+
+fn autodoor_editor_path(source_path: &Path) -> String {
+    let preferred = source_path
+        .join("dist")
+        .join("autodoor-behaviortree-1.6.0")
+        .join("autodoor-behaviortree-1.6.0.exe");
+    if preferred.is_file() {
+        preferred.to_string_lossy().to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn runtime_base_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        dirs.push(cwd.clone());
+        if let Some(parent) = cwd.parent() {
+            dirs.push(parent.to_path_buf());
+            if let Some(grandparent) = parent.parent() {
+                dirs.push(grandparent.to_path_buf());
+            }
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            dirs.push(exe_dir.to_path_buf());
+            if let Some(parent) = exe_dir.parent() {
+                dirs.push(parent.to_path_buf());
+            }
+        }
+    }
+    dirs
+}
+
+fn local_autodoor_config() -> Option<AutoDoorConfig> {
+    for base in runtime_base_dirs() {
+        for root in [base.join("automation"), base.clone()] {
+            let source_path = root.join("autodoor_behavior_tree");
+            let project_path = root.join("Addfriend");
+            if source_path.is_dir() && project_path.is_dir() {
+                return Some(AutoDoorConfig {
+                    editor_executable_path: autodoor_editor_path(&source_path),
+                    autodoor_source_path: source_path.to_string_lossy().to_string(),
+                    project_path: project_path.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+    None
+}
+
+fn legacy_autodoor_config() -> AutoDoorConfig {
+    AutoDoorConfig {
+        autodoor_source_path: LEGACY_AUTODOOR_SOURCE_PATH.to_string(),
+        project_path: LEGACY_PROJECT_PATH.to_string(),
+        editor_executable_path: LEGACY_EDITOR_EXECUTABLE_PATH.to_string(),
+    }
+}
+
+fn is_legacy_path(value: &str, legacy: &str) -> bool {
+    value.trim().eq_ignore_ascii_case(legacy)
+}
+
+fn default_autodoor_config() -> AutoDoorConfig {
+    local_autodoor_config().unwrap_or_else(legacy_autodoor_config)
 }
 
 fn autodoor_config_path() -> PathBuf {
@@ -74,9 +173,25 @@ fn normalize_autodoor_config(mut config: AutoDoorConfig) -> AutoDoorConfig {
 
     if config.autodoor_source_path.is_empty() {
         config.autodoor_source_path = defaults.autodoor_source_path;
+    } else if is_legacy_path(&config.autodoor_source_path, LEGACY_AUTODOOR_SOURCE_PATH)
+        && Path::new(&defaults.autodoor_source_path).is_dir()
+        && !is_legacy_path(&defaults.autodoor_source_path, LEGACY_AUTODOOR_SOURCE_PATH)
+    {
+        config.autodoor_source_path = defaults.autodoor_source_path;
     }
     if config.project_path.is_empty() {
         config.project_path = defaults.project_path;
+    } else if is_legacy_path(&config.project_path, LEGACY_PROJECT_PATH)
+        && Path::new(&defaults.project_path).is_dir()
+        && !is_legacy_path(&defaults.project_path, LEGACY_PROJECT_PATH)
+    {
+        config.project_path = defaults.project_path;
+    }
+    if config.editor_executable_path.is_empty()
+        || (is_legacy_path(&config.editor_executable_path, LEGACY_EDITOR_EXECUTABLE_PATH)
+            && !is_legacy_path(&defaults.editor_executable_path, LEGACY_EDITOR_EXECUTABLE_PATH))
+    {
+        config.editor_executable_path = defaults.editor_executable_path;
     }
     config
 }
@@ -380,6 +495,7 @@ fn start_task(
 ) -> Result<(), String> {
     let (run_id, slot_id) = task_identity(&config_json)?;
     let mut state = state.lock().map_err(|e| e.to_string())?;
+    clear_stop_request(&run_id);
 
     if let Some(mut child) = state.children.remove(&run_id) {
         let _ = child.kill();
@@ -455,8 +571,16 @@ fn start_task(
 
 #[tauri::command]
 fn stop_task(state: tauri::State<'_, Mutex<TaskState>>, run_id: String) -> Result<(), String> {
+    let _ = write_stop_request(&run_id);
     let mut state = state.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = state.children.remove(&run_id) {
+        for _ in 0..20 {
+            match child.try_wait() {
+                Ok(Some(_)) => return Ok(()),
+                Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+                Err(_) => break,
+            }
+        }
         let _ = child.kill();
         let _ = child.wait();
     }

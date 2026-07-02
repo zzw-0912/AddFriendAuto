@@ -1,26 +1,16 @@
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.models.membership import Membership
 from app.models.trial_quota import TrialQuota
 from app.models.user import User
 from app.schemas.status import MembershipInfo, TrialInfo, UserStatusResponse
+from app.services.membership_service import get_current_membership
 
 
 def get_user_status(user: User, db: Session) -> UserStatusResponse:
     # Membership
     membership_info = MembershipInfo()
-    active_membership = (
-        db.query(Membership)
-        .filter(
-            Membership.user_id == user.id,
-            Membership.status == "active",
-            Membership.ends_at > datetime.utcnow(),
-        )
-        .order_by(Membership.ends_at.desc())
-        .first()
-    )
+    active_membership = get_current_membership(db, user.id)
     if active_membership:
         membership_info = MembershipInfo(
             is_active=True,

@@ -15,12 +15,15 @@ from app.schemas.admin import (
     UpdateDeviceRequest,
     UpdateMembershipRequest,
     UpdatePlanRequest,
+    UpdateTrialQuotaRequest,
     UserDetailResponse,
     UserListItem,
 )
 from app.services.admin_service import (
     admin_login,
+    audit_detail,
     confirm_order_payment,
+    create_audit_log,
     list_audit_logs,
     list_contacts,
     list_devices,
@@ -35,6 +38,7 @@ from app.services.admin_service import (
     update_device,
     update_membership,
     update_plan,
+    update_trial_quota,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -52,7 +56,16 @@ def get_users(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_users(page, page_size, db)
+    result = list_users(page, page_size, db)
+    create_audit_log(
+        admin.id,
+        "view_users",
+        "user",
+        None,
+        audit_detail(page=page, page_size=page_size, total=result.get("total")),
+        db,
+    )
+    return result
 
 
 @router.get("/users/{user_id}", response_model=UserDetailResponse)
@@ -61,7 +74,9 @@ def get_user(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return get_user_detail(user_id, db)
+    result = get_user_detail(user_id, db)
+    create_audit_log(admin.id, "view_user_detail", "user", user_id, audit_detail(email=result.email), db)
+    return result
 
 
 @router.patch("/users/{user_id}/membership")
@@ -74,6 +89,16 @@ def patch_membership(
     return update_membership(user_id, req.action, req.days, admin.id, db)
 
 
+@router.patch("/users/{user_id}/trial-quota")
+def patch_trial_quota(
+    user_id: int,
+    req: UpdateTrialQuotaRequest,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return update_trial_quota(user_id, req.action, req.amount, req.remaining_count, admin.id, db)
+
+
 @router.get("/devices")
 def get_devices(
     page: int = Query(1, ge=1),
@@ -81,7 +106,16 @@ def get_devices(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_devices(page, page_size, db)
+    result = list_devices(page, page_size, db)
+    create_audit_log(
+        admin.id,
+        "view_devices",
+        "device",
+        None,
+        audit_detail(page=page, page_size=page_size, total=result.get("total")),
+        db,
+    )
+    return result
 
 
 @router.patch("/devices/{device_id}")
@@ -109,7 +143,9 @@ def get_plans(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_plans(db)
+    result = list_plans(db)
+    create_audit_log(admin.id, "view_plans", "plan", None, audit_detail(count=len(result)), db)
+    return result
 
 
 @router.patch("/plans/{plan_id}")
@@ -130,7 +166,16 @@ def get_orders(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_orders(page, page_size, status, db)
+    result = list_orders(page, page_size, status, db)
+    create_audit_log(
+        admin.id,
+        "view_orders",
+        "order",
+        None,
+        audit_detail(page=page, page_size=page_size, status=status, total=result.get("total")),
+        db,
+    )
+    return result
 
 
 @router.post("/orders/{order_id}/confirm-payment")
@@ -151,7 +196,16 @@ def get_tasks(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_tasks(page, page_size, status, db)
+    result = list_tasks(page, page_size, status, db)
+    create_audit_log(
+        admin.id,
+        "view_tasks",
+        "task",
+        None,
+        audit_detail(page=page, page_size=page_size, status=status, total=result.get("total")),
+        db,
+    )
+    return result
 
 
 @router.get("/tasks/{task_id}/results")
@@ -160,7 +214,9 @@ def get_task_results(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_task_results(task_id, db)
+    result = list_task_results(task_id, db)
+    create_audit_log(admin.id, "view_task_results", "task", task_id, audit_detail(count=len(result)), db)
+    return result
 
 
 @router.get("/audit-logs")
@@ -170,7 +226,16 @@ def get_audit_logs(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_audit_logs(page, page_size, db)
+    result = list_audit_logs(page, page_size, db)
+    create_audit_log(
+        admin.id,
+        "view_audit_logs",
+        "audit_log",
+        None,
+        audit_detail(page=page, page_size=page_size, total=result.get("total")),
+        db,
+    )
+    return result
 
 
 @router.get("/contacts")
@@ -181,7 +246,16 @@ def get_contacts(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_contacts(page, page_size, q, db)
+    result = list_contacts(page, page_size, q, db)
+    create_audit_log(
+        admin.id,
+        "view_contacts",
+        "contact",
+        None,
+        audit_detail(page=page, page_size=page_size, q=q, total=result.get("total")),
+        db,
+    )
+    return result
 
 
 @router.get("/feedback")
@@ -191,4 +265,13 @@ def get_feedback(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return list_feedback(page, page_size, db)
+    result = list_feedback(page, page_size, db)
+    create_audit_log(
+        admin.id,
+        "view_feedback",
+        "feedback",
+        None,
+        audit_detail(page=page, page_size=page_size, total=result.get("total")),
+        db,
+    )
+    return result

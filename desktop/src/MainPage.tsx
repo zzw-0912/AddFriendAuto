@@ -33,6 +33,8 @@ const BOTTOM_NAV_ITEMS = [
   { label: "我的", icon: "profile" },
 ];
 
+const MEMBER_STATUS_REFRESH_MS = 24 * 60 * 60 * 1000;
+
 const HERO_SLIDES = [
   {
     title: "智能高效 · 轻松拓展人脉",
@@ -53,6 +55,7 @@ const HERO_SLIDES = [
 
 function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
   return {
+    targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
     createTag: Boolean(defaults?.createTag),
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,
@@ -84,10 +87,11 @@ function isMembershipExpired(status: UserStatus | null) {
   return Number.isFinite(endsAt) && endsAt <= Date.now();
 }
 
-function shouldPromptPayment(status: UserStatus | null) {
-  if (!status) return false;
-  if (status.membership.is_active) return false;
-  return status.trial.remaining <= 0 || isMembershipExpired(status);
+function msUntilNextLocalDay() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(24, 0, 5, 0);
+  return Math.max(60_000, next.getTime() - now.getTime());
 }
 
 function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Props) {
@@ -110,19 +114,39 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
       });
       if (res.status === 401 || res.status === 403) {
         onLogout();
-        return;
+        return null;
       }
-      if (res.ok) setStatus(await res.json());
+      if (res.ok) {
+        const nextStatus = await res.json() as UserStatus;
+        setStatus(nextStatus);
+        return nextStatus;
+      }
     } catch {
       // network error — OfflineBanner handles the UI feedback
     }
+    return null;
   }, [apiBase, auth.token, onLogout]);
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
-    return () => clearInterval(interval);
+    void fetchStatus();
   }, [fetchStatus]);
+
+  useEffect(() => {
+    if (!status?.membership.is_active) return;
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const timeoutId = setTimeout(() => {
+      void fetchStatus();
+      intervalId = setInterval(() => {
+        void fetchStatus();
+      }, MEMBER_STATUS_REFRESH_MS);
+    }, msUntilNextLocalDay());
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [fetchStatus, status?.membership.is_active]);
 
   useEffect(() => {
     if (slidePaused) return;
@@ -135,14 +159,10 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
   const planId = status?.membership.plan_id;
   const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+  const trialRemaining = Math.max(0, status?.trial.remaining ?? 0);
   const membershipExpired = isMembershipExpired(status);
-  const canSkipTrialPayment = (status?.trial.remaining ?? 0) > 0 && !membershipExpired;
-
-  useEffect(() => {
-    if (shouldPromptPayment(status)) {
-      setShowPayment(true);
-    }
-  }, [status]);
+  const showExpiredBadge = membershipExpired && trialRemaining <= 0;
+  const canSkipTrialPayment = trialRemaining > 0;
 
   const renderMainContent = () => {
     if (activeNav === "我的") {
@@ -372,7 +392,12 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
                   <span>会员有效至 {formatDate(status.membership.ends_at)}</span>
                 </div>
               )}
-              {membershipExpired ? (
+              {!status?.membership.is_active && trialRemaining > 0 ? (
+                <div className="status-badge trial">
+                  <span className="dot" />
+                  <span>剩余试用 {trialRemaining} 次</span>
+                </div>
+              ) : showExpiredBadge ? (
                 <div className="status-badge trial">
                   <span className="dot" />
                   <span>会员已过期</span>
@@ -380,7 +405,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               ) : (!status || !status.membership.is_active) && (
                 <div className="status-badge trial">
                   <span className="dot" />
-                  <span>剩余试用 {status?.trial.remaining ?? 20} 次</span>
+                  <span>剩余试用 {status ? trialRemaining : 20} 次</span>
                 </div>
               )}
               <span className="user-email">{auth.email}</span>

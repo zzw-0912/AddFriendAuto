@@ -8,6 +8,9 @@ from app.core.security import hash_password
 from app.models.admin_user import AdminUser
 from app.models.feedback import Feedback
 from app.models.plan import Plan
+from app.models.task import Task
+from app.models.task_result import TaskResult
+from app.models.task_target import TaskTarget
 from app.models.user import User
 
 
@@ -19,10 +22,12 @@ DEFAULT_PLANS = [
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    is_sqlite = engine.dialect.name == "sqlite"
+    if is_sqlite:
+        Base.metadata.create_all(bind=engine)
 
     # Add columns to existing tables if missing (SQLite compat)
-    if "sqlite" in str(engine.url):
+    if is_sqlite:
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
@@ -47,8 +52,38 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE tasks ADD COLUMN target_type VARCHAR(20) NOT NULL DEFAULT 'phone'"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE task_targets ADD COLUMN name VARCHAR(255)"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE task_results ADD COLUMN target_id INTEGER"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE task_results ADD COLUMN target_type VARCHAR(20)"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("CREATE UNIQUE INDEX uq_task_results_task_target ON task_results (task_id, target_id)"))
+                conn.commit()
+        except Exception:
+            pass
 
-    if "sqlite" in str(engine.url):
+    if is_sqlite:
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN referral_code VARCHAR(16)"))

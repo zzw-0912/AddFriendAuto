@@ -4,6 +4,7 @@ import string
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -126,7 +127,7 @@ def login(email: str, password: str, machine_code: str, db: Session) -> dict:
         result["is_new_user"] = is_new
         return result
 
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(User.email == email).with_for_update().first()
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account does not exist")
 
@@ -144,7 +145,14 @@ def login(email: str, password: str, machine_code: str, db: Session) -> dict:
         _bind_device(user.id, machine_code, db)
 
     user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Account device binding conflict. Please retry.",
+        ) from exc
 
     result = _issue_token(user.id, email)
     result["is_new_user"] = False
@@ -189,7 +197,14 @@ def register(email: str, password: str, code: str, machine_code: str, db: Sessio
     _bind_device(user.id, machine_code, db)
 
     user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered or device already bound.",
+        ) from exc
 
     result = _issue_token(user.id, email)
     result["is_new_user"] = True

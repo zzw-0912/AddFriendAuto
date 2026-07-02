@@ -31,6 +31,7 @@ from app.schemas.admin import (
     UserDetailTrial,
     UserListItem,
 )
+from app.services.membership_service import expire_active_memberships, is_membership_current
 from app.services.payment_service import process_order_payment
 
 
@@ -57,22 +58,52 @@ def _verify_admin_password(admin: AdminUser, password: str, db: Session) -> bool
 def admin_login(username: str, password: str, db: Session) -> dict:
     admin = db.query(AdminUser).filter(AdminUser.username == username, AdminUser.status == "active").first()
     if not admin:
+        create_audit_log(
+            0,
+            "admin_login_failed",
+            "admin",
+            None,
+            audit_detail(username=username, reason="admin_not_found_or_inactive"),
+            db,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     if not _verify_admin_password(admin, password, db):
+        create_audit_log(
+            admin.id,
+            "admin_login_failed",
+            "admin",
+            admin.id,
+            audit_detail(username=admin.username, reason="bad_password"),
+            db,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
+    admin_info = AdminInfo(id=admin.id, username=admin.username, role=admin.role).model_dump()
     token = create_access_token({
         "sub": f"admin_{admin.id}",
         "username": admin.username,
         "role": admin.role,
     })
+    create_audit_log(
+        admin.id,
+        "admin_login",
+        "admin",
+        admin.id,
+        audit_detail(username=admin.username, role=admin.role),
+        db,
+    )
 
     return {
         "access_token": token,
         "token_type": "bearer",
-        "admin": AdminInfo(id=admin.id, username=admin.username, role=admin.role).model_dump(),
+        "admin": admin_info,
     }
+
+
+def audit_detail(**kwargs) -> str:
+    data = {key: value for key, value in kwargs.items() if value is not None}
+    return json.dumps(data, ensure_ascii=False, default=str)
 
 
 def create_audit_log(admin_user_id: int, action: str, target_type: str | None = None,
@@ -131,7 +162,7 @@ def get_user_detail(user_id: int, db: Session) -> UserDetailResponse:
         if ends and ends.tzinfo:
             ends = ends.replace(tzinfo=None)
         membership_info = UserDetailMembership(
-            is_active=active_membership.status == "active" and ends > datetime.utcnow(),
+            is_active=is_membership_current(active_membership),
             starts_at=active_membership.starts_at,
             ends_at=active_membership.ends_at,
             status=active_membership.status,
@@ -223,7 +254,85 @@ def update_membership(user_id: int, action: str, days: int | None,
                          f"Unfrozen {len(frozen)} memberships", db)
         return {"success": True, "unfrozen_count": len(frozen)}
 
+    elif action == "expire":
+        expired_count, expire_at = expire_active_memberships(db, user_id, now)
+        db.commit()
+        create_audit_log(
+            admin_user_id,
+            "expire_membership",
+            "user",
+            user_id,
+            f"Expired {expired_count} active memberships at {expire_at}",
+            db,
+        )
+        return {"success": True, "expired_count": expired_count, "ends_at": str(expire_at)}
+
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown action: {action}")
+
+
+def update_trial_quota(
+    user_id: int,
+    action: str,
+    amount: int | None,
+    remaining_count: int | None,
+    admin_user_id: int,
+    db: Session,
+) -> dict:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    quota = db.query(TrialQuota).filter(TrialQuota.user_id == user_id).first()
+    if not quota:
+        quota = TrialQuota(
+            user_id=user_id,
+            device_id=0,
+            total_count=20,
+            used_count=0,
+            remaining_count=20,
+        )
+        db.add(quota)
+        db.flush()
+
+    old_used = int(quota.used_count or 0)
+    old_remaining = int(quota.remaining_count or 0)
+    total = max(0, int(quota.total_count or 0))
+
+    if action == "decrement":
+        decrement_by = amount or 1
+        new_remaining = max(0, old_remaining - decrement_by)
+    elif action == "set_remaining":
+        if remaining_count is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="remaining_count is required")
+        new_remaining = min(max(0, remaining_count), total)
+    elif action == "clear":
+        new_remaining = 0
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown action: {action}")
+
+    new_remaining = min(max(0, new_remaining), total)
+    quota.remaining_count = new_remaining
+    quota.used_count = max(0, total - new_remaining)
+    db.commit()
+    db.refresh(quota)
+
+    create_audit_log(
+        admin_user_id,
+        "update_trial_quota",
+        "user",
+        user_id,
+        (
+            f"action={action}; used {old_used}->{quota.used_count}; "
+            f"remaining {old_remaining}->{quota.remaining_count}; total={quota.total_count}"
+        ),
+        db,
+    )
+    return {
+        "success": True,
+        "total": quota.total_count,
+        "used": quota.used_count,
+        "remaining": quota.remaining_count,
+    }
 
 
 def list_devices(page: int, page_size: int, db: Session) -> dict:
@@ -279,8 +388,8 @@ def rebind_device(device_id: int, new_user_id: int, admin_user_id: int, db: Sess
     if not new_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="New user not found")
 
-    existing = db.query(Device).filter(Device.user_id == new_user_id, Device.id != device_id).first()
-    if existing:
+    existing_devices = db.query(Device).filter(Device.user_id == new_user_id, Device.id != device_id).all()
+    for existing in existing_devices:
         db.delete(existing)
 
     old_user_id = device.user_id
@@ -320,11 +429,17 @@ def update_plan(plan_id: int, req, admin_user_id: int, db: Session) -> AdminPlan
         changes.append(f"enabled: {plan.enabled} -> {req.enabled}")
         plan.enabled = req.enabled
 
+    if not changes:
+        create_audit_log(admin_user_id, "update_plan_noop", "plan", plan_id, "No plan fields changed", db)
+        return AdminPlanResponse(
+            id=plan.id, name=plan.name, duration_days=plan.duration_days,
+            price_cents=plan.price_cents, enabled=plan.enabled,
+        )
+
     db.commit()
     db.refresh(plan)
 
-    if changes:
-        create_audit_log(admin_user_id, "update_plan", "plan", plan_id, "; ".join(changes), db)
+    create_audit_log(admin_user_id, "update_plan", "plan", plan_id, "; ".join(changes), db)
 
     return AdminPlanResponse(
         id=plan.id, name=plan.name, duration_days=plan.duration_days,
@@ -411,7 +526,7 @@ def list_tasks(page: int, page_size: int, status_filter: str | None, db: Session
         s = stats_map.get(t.id, {"success": 0, "failed": 0, "invalid": 0})
         items.append(TaskListItem(
             id=t.id, user_id=t.user_id, email=users_map.get(t.user_id),
-            device_id=t.device_id, slot_id=t.slot_id, daily_limit=t.daily_limit,
+            device_id=t.device_id, slot_id=t.slot_id, target_type=t.target_type, daily_limit=t.daily_limit,
             status=t.status, started_at=t.started_at, finished_at=t.finished_at,
             success_count=s["success"], failed_count=s["failed"], invalid_count=s["invalid"],
         ))
@@ -426,7 +541,7 @@ def list_task_results(task_id: int, db: Session) -> list:
 
     results = db.query(TaskResult).filter(TaskResult.task_id == task_id).order_by(TaskResult.id).all()
     return [TaskResultItem(
-        id=r.id, contact_id=r.contact_id, result=r.result,
+        id=r.id, target_id=r.target_id, target_type=r.target_type, contact_id=r.contact_id, result=r.result,
         message=r.message, trial_charged=r.trial_charged, created_at=r.created_at,
     ) for r in results]
 
@@ -440,7 +555,7 @@ def list_audit_logs(page: int, page_size: int, db: Session) -> dict:
     admins_map = {a.id: a.username for a in db.query(AdminUser).filter(AdminUser.id.in_(admin_ids)).all()} if admin_ids else {}
 
     items = [AuditLogItem(
-        id=l.id, admin_username=admins_map.get(l.admin_user_id),
+        id=l.id, admin_user_id=l.admin_user_id, admin_username=admins_map.get(l.admin_user_id),
         action=l.action, target_type=l.target_type, target_id=l.target_id,
         detail=l.detail, created_at=l.created_at,
     ) for l in logs]

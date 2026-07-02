@@ -28,6 +28,11 @@ def process_order_payment_by_order_no(order_no: str, channel: str, db: Session) 
 
 def process_order_payment(order: Order, channel: str, db: Session) -> dict:
     """Mark an order paid and activate/extend membership once."""
+    locked_order = db.query(Order).filter(Order.id == order.id).with_for_update().first()
+    if not locked_order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    order = locked_order
+
     if order.status == "paid":
         return {
             "success": True,

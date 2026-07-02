@@ -13,6 +13,7 @@ from app.models.membership import Membership
 from app.models.trial_quota import TrialQuota
 from app.models.task import Task
 from app.models.task_result import TaskResult
+from app.models.task_target import TaskTarget
 from app.models.contact import Contact
 from app.models.feedback import Feedback
 from app.models.admin_user import AdminUser
@@ -23,7 +24,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:

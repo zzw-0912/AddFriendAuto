@@ -352,25 +352,6 @@ function ProfilePage({
         </div>
       </div>
 
-      {/* Statistics Card */}
-      <div className="profile-card">
-        <h4 className="profile-card-title">累计数据</h4>
-        <div className="profile-stats">
-          <div className="profile-stat stat-success">
-            <div className="stat-number">{(profile?.success_count ?? 0).toLocaleString()}</div>
-            <div className="stat-label">加人成功</div>
-          </div>
-          <div className="profile-stat stat-failed">
-            <div className="stat-number">{(profile?.failed_count ?? 0).toLocaleString()}</div>
-            <div className="stat-label">失败</div>
-          </div>
-          <div className="profile-stat stat-invalid">
-            <div className="stat-number">{(profile?.invalid_count ?? 0).toLocaleString()}</div>
-            <div className="stat-label">无效</div>
-          </div>
-        </div>
-      </div>
-
       {/* Referral Code Card */}
       <div className="profile-card">
         <h4 className="profile-card-title">推荐码</h4>

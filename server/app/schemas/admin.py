@@ -63,8 +63,14 @@ class UserDetailResponse(BaseModel):
 
 
 class UpdateMembershipRequest(BaseModel):
-    action: Literal["extend", "freeze", "unfreeze"]
+    action: Literal["extend", "freeze", "unfreeze", "expire"]
     days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class UpdateTrialQuotaRequest(BaseModel):
+    action: Literal["decrement", "set_remaining", "clear"]
+    amount: int | None = Field(default=None, ge=1, le=10_000)
+    remaining_count: int | None = Field(default=None, ge=0, le=10_000)
 
 
 class UpdateDeviceRequest(BaseModel):
@@ -112,6 +118,7 @@ class TaskListItem(BaseModel):
     email: str | None = None
     device_id: int
     slot_id: int = 1
+    target_type: str = "phone"
     daily_limit: int
     status: str
     started_at: datetime
@@ -123,6 +130,8 @@ class TaskListItem(BaseModel):
 
 class TaskResultItem(BaseModel):
     id: int
+    target_id: int | None = None
+    target_type: str | None = None
     contact_id: int | None = None
     result: str
     message: str | None = None
@@ -132,6 +141,7 @@ class TaskResultItem(BaseModel):
 
 class AuditLogItem(BaseModel):
     id: int
+    admin_user_id: int
     admin_username: str | None = None
     action: str
     target_type: str | None = None

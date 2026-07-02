@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "node scripts/tauri-random-port.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
