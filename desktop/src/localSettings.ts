@@ -6,12 +6,23 @@ import {
   type WeChatWindowBinding,
 } from "./types";
 
+const PRESET_COUNT = 3;
+
+function normalizeGreetingPresets(value: unknown, fallback: TaskDefaults["greetingPresets"]): string[] {
+  const source = Array.isArray(value) ? value : [];
+  return Array.from({ length: PRESET_COUNT }, (_, index) => {
+    const preset = source[index];
+    return typeof preset === "string" ? preset.trim() : fallback[index] || "";
+  });
+}
+
 export function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null | undefined, fallback = DEFAULT_TASK_DEFAULTS): TaskDefaults {
   return {
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || fallback.dailyLimit)),
     createTag: Boolean(defaults?.createTag),
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : fallback.greetingText,
+    greetingPresets: normalizeGreetingPresets(defaults?.greetingPresets, fallback.greetingPresets),
   };
 }
 

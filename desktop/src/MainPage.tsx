@@ -54,11 +54,20 @@ const HERO_SLIDES = [
 ];
 
 function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
+  const rawGreetingPresets = defaults?.greetingPresets;
+  const greetingPresets = Array.isArray(rawGreetingPresets)
+    ? DEFAULT_TASK_DEFAULTS.greetingPresets.map((fallback, index) => {
+        const preset = rawGreetingPresets[index];
+        return typeof preset === "string" ? preset.trim() : fallback;
+      })
+    : DEFAULT_TASK_DEFAULTS.greetingPresets;
+
   return {
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
     createTag: Boolean(defaults?.createTag),
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,
+    greetingPresets,
   };
 }
 

@@ -5,6 +5,7 @@ export interface TaskDefaults {
   dailyLimit: number;
   createTag: boolean;
   greetingText: string;
+  greetingPresets: string[];
 }
 
 export interface WeChatWindowInfo {
@@ -39,6 +40,11 @@ export const DEFAULT_TASK_DEFAULTS: TaskDefaults = {
   dailyLimit: 20,
   createTag: false,
   greetingText: "",
+  greetingPresets: [
+    "你好，很高兴认识你，方便加个微信交流一下吗？",
+    "您好，看到您的资料很不错，想加个好友认识一下。",
+    "你好，我这边想和你交流一下相关信息，方便通过好友吗？",
+  ],
 };
 
 export interface UserStatus {

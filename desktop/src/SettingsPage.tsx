@@ -42,11 +42,17 @@ interface SettingsPageProps {
 }
 
 function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
+  const greetingPresets = DEFAULT_TASK_DEFAULTS.greetingPresets.map((fallback, index) => {
+    const preset = defaults.greetingPresets?.[index];
+    return typeof preset === "string" ? preset.trim() : fallback;
+  });
+
   return {
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
     createTag: Boolean(defaults.createTag),
     greetingText: defaults.greetingText.trim(),
+    greetingPresets,
   };
 }
 

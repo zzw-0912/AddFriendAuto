@@ -71,11 +71,6 @@ const BOOT_STEPS = [
 ];
 
 const START_DELAY_SECONDS = 5;
-const DEFAULT_GREETING_TEXTS = [
-  "你好，很高兴认识你，方便加个微信交流一下吗？",
-  "您好，看到您的资料很不错，想加个好友认识一下。",
-  "你好，我这边想和你交流一下相关信息，方便通过好友吗？",
-];
 
 function targetTypeLabel(type: TargetType) {
   if (type === "contact") return "联系人";
@@ -130,6 +125,7 @@ function TaskPanel({
   const [dailyLimit, setDailyLimit] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).dailyLimit);
   const [createTag, setCreateTag] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).createTag);
   const [greetingText, setGreetingText] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingText);
+  const [greetingPresets, setGreetingPresets] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingPresets);
   const [isRunning, setIsRunning] = useState(false);
   const [, setTaskId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -334,12 +330,8 @@ function TaskPanel({
     setDailyLimit(slotConfig.dailyLimit);
     setCreateTag(slotConfig.createTag);
     setGreetingText(slotConfig.greetingText);
+    setGreetingPresets(slotConfig.greetingPresets);
   }, [isRunning, slotId, taskDefaults, taskDefaultsVersion]);
-
-  useEffect(() => {
-    if (isRunning) return;
-    saveTaskSlotConfig(slotId, { targetType, dailyLimit, createTag, greetingText });
-  }, [createTag, dailyLimit, greetingText, isRunning, slotId, targetType]);
 
   useEffect(() => {
     return () => {
@@ -359,6 +351,16 @@ function TaskPanel({
     }
     setStartCountdown(0);
   }, []);
+
+  const handleGreetingPresetChange = (index: number, value: string) => {
+    setGreetingPresets((prev) => prev.map((preset, i) => (i === index ? value : preset)));
+  };
+
+  const handleSaveConfig = () => {
+    const nextConfig = { targetType, dailyLimit, createTag, greetingText, greetingPresets };
+    saveTaskSlotConfig(slotId, nextConfig);
+    addUniqueLog("任务配置已保存", "success");
+  };
 
   const runStartTask = async () => {
     if (!isOnline) {
@@ -548,20 +550,32 @@ function TaskPanel({
               rows={2}
             />
             <div className="greeting-presets">
-              {DEFAULT_GREETING_TEXTS.map((text) => (
-                <button
-                  key={text}
-                  className={`greeting-preset-btn${greetingText === text ? " active" : ""}`}
-                  type="button"
-                  disabled={isRunning}
-                  onClick={() => setGreetingText(text)}
-                >
-                  {text}
-                </button>
+              {greetingPresets.map((text, index) => (
+                <div key={index} className={`greeting-preset-editor${greetingText === text && text ? " active" : ""}`}>
+                  <textarea
+                    className="input greeting-preset-input"
+                    value={text}
+                    rows={2}
+                    disabled={isRunning}
+                    placeholder={`默认招呼语 ${index + 1}`}
+                    onChange={(e) => handleGreetingPresetChange(index, e.target.value)}
+                  />
+                  <button
+                    className="greeting-preset-use-btn"
+                    type="button"
+                    disabled={isRunning || !text.trim()}
+                    onClick={() => setGreetingText(text.trim())}
+                  >
+                    使用
+                  </button>
+                </div>
               ))}
             </div>
           </div>
           <div className="task-actions">
+            <button className="btn-save-config" type="button" onClick={handleSaveConfig} disabled={isRunning}>
+              保存配置
+            </button>
             {!isRunning ? (
               <button className="btn-start" onClick={handleStartClick} disabled={!isOnline || startCountdown > 0} title={!isOnline ? "网络已断开，无法启动任务" : ""}>
                 {startCountdown > 0 ? "等待切换..." : "开始任务"}

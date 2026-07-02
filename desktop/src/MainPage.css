@@ -727,35 +727,53 @@
   gap: 8px;
 }
 
-.task-card .greeting-preset-btn {
-  min-height: 36px;
-  padding: 6px 10px;
+.task-card .greeting-preset-editor {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--panel-soft);
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.task-card .greeting-preset-editor.active {
+  border-color: rgba(47, 109, 246, 0.34);
+  background: #edf4ff;
+  box-shadow: inset 0 0 0 1px rgba(47, 109, 246, 0.08);
+}
+
+.task-card .greeting-preset-input {
+  width: 100%;
+  min-height: 54px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  resize: vertical;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.task-card .greeting-preset-use-btn {
+  min-height: 30px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
   color: var(--text-soft);
   font-size: 12px;
-  line-height: 1.35;
-  font-weight: 600;
-  text-align: left;
-  overflow-wrap: anywhere;
+  font-weight: 700;
   transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
 }
 
-.task-card .greeting-preset-btn:hover:not(:disabled) {
+.task-card .greeting-preset-use-btn:hover:not(:disabled) {
   color: var(--blue);
   border-color: rgba(47, 109, 246, 0.24);
   background: #f4f8ff;
   transform: translateY(-1px);
 }
 
-.task-card .greeting-preset-btn.active {
-  color: var(--blue);
-  border-color: rgba(47, 109, 246, 0.34);
-  background: #edf4ff;
-}
-
-.task-card .greeting-preset-btn:disabled {
+.task-card .greeting-preset-use-btn:disabled,
+.task-card .greeting-preset-input:disabled {
   opacity: 0.62;
   cursor: not-allowed;
   transform: none;
@@ -782,19 +800,41 @@
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
+.task-card .btn-save-config,
 .task-card .btn-start {
   padding: 10px 28px;
   font-size: 14px;
   font-weight: 600;
-  background: linear-gradient(180deg, #3d79ff 0%, #265df0 100%);
-  color: #fff;
   border: none;
   border-radius: 10px;
   cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.task-card .btn-save-config {
+  background: var(--panel);
+  color: var(--text-soft);
+  border: 1px solid var(--line);
+}
+
+.task-card .btn-save-config:hover:not(:disabled) {
+  color: var(--blue);
+  border-color: rgba(47, 109, 246, 0.24);
+  background: #f4f8ff;
+}
+
+.task-card .btn-save-config:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.task-card .btn-start {
+  background: linear-gradient(180deg, #3d79ff 0%, #265df0 100%);
+  color: #fff;
   box-shadow: 0 8px 16px rgba(47, 109, 246, 0.2);
-  transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
 .task-card .btn-start:hover {
@@ -2669,6 +2709,9 @@
   .task-card .config-row .daily-limit-field {
     flex-basis: min(262px, 100%);
     max-width: 100%;
+  }
+  .task-card .greeting-presets {
+    grid-template-columns: 1fr;
   }
   .tutorial-hero {
     align-items: flex-start;
