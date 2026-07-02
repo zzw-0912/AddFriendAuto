@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
 import { useSendCode } from "./useSendCode";
 
 interface Props {
@@ -101,18 +102,20 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) { showToast("请输入邮箱地址"); return; }
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) { showToast("请输入邮箱地址"); return; }
+    if (!isQqEmail(normalizedEmail)) { showToast(QQ_EMAIL_ONLY_MESSAGE); return; }
     if (!password) { showToast("请输入密码"); return; }
 
     setLoading(true);
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, machine_code: machineCode }),
+        body: JSON.stringify({ email: normalizedEmail, password, machine_code: machineCode }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.detail || "登录失败"); return; }
-      onLogin(data.access_token, email);
+      onLogin(data.access_token, normalizedEmail);
       showToast(remember ? "登录成功，下次将自动登录" : "登录成功");
     } catch {
       showToast("无法连接服务器");
@@ -128,7 +131,7 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
 
       <div className="field">
         <label>邮箱地址</label>
-        <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="your@qq.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </div>
 
       <div className="field">
@@ -165,7 +168,9 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) { showToast("请输入邮箱地址"); return; }
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) { showToast("请输入邮箱地址"); return; }
+    if (!isQqEmail(normalizedEmail)) { showToast(QQ_EMAIL_ONLY_MESSAGE); return; }
     if (!password || password.length < 6) { showToast("密码至少 6 位字符"); return; }
     if (password !== confirm) { showToast("两次输入的密码不一致"); return; }
     if (code.length < 6) { showToast("请输入 6 位验证码"); return; }
@@ -175,11 +180,11 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, code, machine_code: machineCode }),
+        body: JSON.stringify({ email: normalizedEmail, password, code, machine_code: machineCode }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.detail || "注册失败"); return; }
-      onLogin(data.access_token, email);
+      onLogin(data.access_token, normalizedEmail);
       showToast("注册成功，即将自动登录");
     } catch {
       showToast("无法连接服务器");
@@ -195,7 +200,7 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
 
       <div className="field">
         <label>邮箱地址</label>
-        <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="your@qq.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </div>
 
       <div className="field">
@@ -246,7 +251,9 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) { showToast("请输入邮箱地址"); return; }
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) { showToast("请输入邮箱地址"); return; }
+    if (!isQqEmail(normalizedEmail)) { showToast(QQ_EMAIL_ONLY_MESSAGE); return; }
     if (!code || code.length < 6) { showToast("请输入 6 位验证码"); return; }
     if (!newPassword || newPassword.length < 6) { showToast("密码至少 6 位字符"); return; }
     if (newPassword !== confirmPassword) { showToast("两次输入的密码不一致"); return; }
@@ -255,7 +262,7 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
     try {
       const res = await fetch(`${apiBase}/auth/reset-password`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, new_password: newPassword }),
+        body: JSON.stringify({ email: normalizedEmail, code, new_password: newPassword }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.detail || "重置失败"); return; }
@@ -275,7 +282,7 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
 
       <div className="field">
         <label>注册邮箱</label>
-        <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="your@qq.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </div>
 
       <div className="code-row">

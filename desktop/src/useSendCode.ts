@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
 
 export function useSendCode(apiBase: string, showToast: (message: string) => void) {
   const [countdown, setCountdown] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const send = useCallback(async (email: string) => {
-    if (!email) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
       showToast("请先输入邮箱地址");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showToast("请输入有效的邮箱地址");
+    if (!isQqEmail(normalizedEmail)) {
+      showToast(QQ_EMAIL_ONLY_MESSAGE);
       return;
     }
 
@@ -19,7 +21,7 @@ export function useSendCode(apiBase: string, showToast: (message: string) => voi
       const res = await fetch(`${apiBase}/auth/send-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: normalizedEmail }),
       });
       const data = await res.json();
       if (!res.ok) {
