@@ -118,7 +118,8 @@ class MouseClickNode(ActionNode):
             if self._actual_duration is None:
                 self._actual_duration = get_random_duration(duration, duration_random)
             context.execute_mouse_click(button, position, action, self._actual_duration,
-                                        x_float=self.x_float, y_float=self.y_float)
+                                        x_float=self.x_float, y_float=self.y_float,
+                                        node_name=self.name)
 
             if action == "down":
                 self._button_pressed = True
@@ -168,7 +169,8 @@ class MouseClickNode(ActionNode):
         if self._actual_duration is None:
             self._actual_duration = get_random_duration(duration, duration_random)
         context.execute_mouse_click(button, position, action, self._actual_duration,
-                                    x_float=self.x_float, y_float=self.y_float)
+                                    x_float=self.x_float, y_float=self.y_float,
+                                    node_name=self.name)
 
         if action == "down":
             self._button_pressed = True
@@ -184,7 +186,7 @@ class MouseClickNode(ActionNode):
         if self._button_pressed and self._context:
             try:
                 button = self.config.get("button", "left")
-                self._context.execute_mouse_click(button, None, "up", 0)
+                self._context.execute_mouse_click(button, None, "up", 0, node_name=self.name)
             except Exception:
                 pass
         self._reset_click_state()
@@ -285,7 +287,7 @@ class MouseMoveNode(ActionNode):
                 reason="执行异常，详情见终端日志"
             )
             try:
-                context.execute_mouse_click(self.config.get("drag_button", "left"), None, "up", 0)
+                context.execute_mouse_click(self.config.get("drag_button", "left"), None, "up", 0, node_name=self.name)
             except Exception:
                 pass
             return NodeStatus.FAILURE
@@ -393,7 +395,7 @@ class MouseMoveNode(ActionNode):
                                    x_float=self.x_float, y_float=self.y_float)
         time.sleep(0.02)
 
-        context.execute_mouse_click(drag_button, start_pos, "down", 0)
+        context.execute_mouse_click(drag_button, start_pos, "down", 0, node_name=self.name)
         time.sleep(0.02)
         
         if actual_duration > 0:
@@ -406,7 +408,7 @@ class MouseMoveNode(ActionNode):
             
             for i in range(steps):
                 if not context.check_running():
-                    context.execute_mouse_click(drag_button, end_pos, "up", 0)
+                    context.execute_mouse_click(drag_button, end_pos, "up", 0, node_name=self.name)
                     return NodeStatus.ABORTED
                 
                 elapsed = time.time() - start_time
@@ -427,7 +429,7 @@ class MouseMoveNode(ActionNode):
                                        x_float=self.x_float, y_float=self.y_float)
         
         time.sleep(0.02)
-        context.execute_mouse_click(drag_button, end_pos, "up", 0)
+        context.execute_mouse_click(drag_button, end_pos, "up", 0, node_name=self.name)
 
         LogManager.instance().log_success(
             node_type="鼠标移动节点",

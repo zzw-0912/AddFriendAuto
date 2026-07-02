@@ -6,6 +6,30 @@ user32 = ctypes.windll.user32
 
 
 class WindowManager:
+    STRICT_TITLE_KEYWORDS = {"添加朋友", "申请添加朋友"}
+
+    @staticmethod
+    def _title_matches(title: str, keyword: str, allow_partial: bool = True) -> bool:
+        title_text = str(title or "").strip().lower()
+        keyword_text = str(keyword or "").strip().lower()
+        if not title_text or not keyword_text:
+            return False
+        if title_text == keyword_text:
+            return True
+        if keyword_text in WindowManager.STRICT_TITLE_KEYWORDS:
+            return False
+        return allow_partial and keyword_text in title_text
+
+    @staticmethod
+    def _find_window_from_matches(matches: List[Tuple[int, str]], keyword: str) -> Optional[int]:
+        for hwnd, title in matches:
+            if str(title or "").strip().lower() == str(keyword or "").strip().lower():
+                return hwnd
+        for hwnd, title in matches:
+            if WindowManager._title_matches(title, keyword):
+                return hwnd
+        return None
+
     @staticmethod
     def enum_all_windows() -> List[Tuple[int, str]]:
         results = []
@@ -29,10 +53,7 @@ class WindowManager:
     @staticmethod
     def find_window_by_title(keyword: str) -> Optional[int]:
         windows = WindowManager.enum_all_windows()
-        for hwnd, title in windows:
-            if keyword.lower() in title.lower():
-                return hwnd
-        return None
+        return WindowManager._find_window_from_matches(windows, keyword)
 
     @staticmethod
     def find_window_by_pid(pid: int) -> Optional[int]:
@@ -61,13 +82,14 @@ class WindowManager:
 
     @staticmethod
     def find_window_by_pid_and_title(pid: int, title_keyword: str) -> Optional[int]:
+        matches = []
         windows = WindowManager.enum_all_windows()
         for hwnd, title in windows:
             window_pid = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_pid))
-            if window_pid.value == pid and title_keyword.lower() in title.lower():
-                return hwnd
-        return None
+            if window_pid.value == pid:
+                matches.append((hwnd, title))
+        return WindowManager._find_window_from_matches(matches, title_keyword)
 
     @staticmethod
     def find_main_window_by_pid(pid: int) -> Optional[int]:
@@ -176,7 +198,7 @@ class WindowManager:
         if hwnd and WindowManager.is_window_valid(hwnd):
             if title_keyword:
                 actual_title = WindowManager.get_window_title(hwnd)
-                if actual_title and title_keyword.lower() in actual_title.lower():
+                if WindowManager._title_matches(actual_title, title_keyword):
                     return hwnd, "hwnd"
             else:
                 return hwnd, "hwnd"

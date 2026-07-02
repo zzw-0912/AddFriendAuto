@@ -543,12 +543,29 @@ def apply_wechat_binding(nodes: dict[str, dict[str, Any]], node_ids: list[str], 
             continue
 
         config["window_pid"] = binding["pid"]
+        config["keep_foreground"] = True
         if contains_any(title, ["微信"]):
             config["window_hwnd"] = binding["hwnd"]
             config["window_title"] = binding["title"]
         else:
             config.pop("window_hwnd", None)
         patched += 1
+    return patched
+
+
+def stabilize_bound_window_clicks(nodes: dict[str, dict[str, Any]], node_ids: list[str]) -> int:
+    patched = 0
+    for node_id in node_ids:
+        node = nodes[node_id]
+        if node_type(node) != "MouseClickNode":
+            continue
+        config = get_config(node)
+        if not config.get("use_blackboard"):
+            continue
+        if config.get("x_float") != 0 or config.get("y_float") != 0:
+            patched += 1
+        config["x_float"] = 0
+        config["y_float"] = 0
     return patched
 
 
@@ -645,7 +662,7 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
     nodes: dict[str, dict[str, Any]] = tree_data.get("nodes", {})
     slot_id = int(task_config.get("slot_id") or 1)
     binding = parse_wechat_binding(task_config)
-    if slot_id > 1 and not binding:
+    if not binding:
         raise RuntimeError(f"微信{slot_id}未绑定有效窗口，请先在客户端绑定微信窗口")
 
     disabled_accounts = patch_single_account(tree_data)
@@ -716,6 +733,8 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         patch_skip_tag_flow(tree_data, active_ids, greeting_ids)
         active_ids = reachable_enabled_ids(nodes, root_id)
 
+    stabilized_clicks = stabilize_bound_window_clicks(nodes, active_ids)
+
     validation_ids = {
         node_id
         for node_id in active_ids
@@ -748,6 +767,7 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         "confirm_click_ids": confirm_click_ids,
         "key_failure_ids": key_failure_ids,
         "disabled_accounts": disabled_accounts,
+        "stabilized_clicks": stabilized_clicks,
     }
 
 

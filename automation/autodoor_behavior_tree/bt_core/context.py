@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Tuple, List, TYPE_CHECKING
+import json
 import os
 import re
 import time
@@ -231,19 +232,312 @@ class ExecutionContext:
 
         self._screenshot_cache.clear()
 
+    def _click_guard_log_path(self) -> str:
+        project_root = os.path.abspath(self.project_root or os.getcwd())
+        run_dir = os.path.dirname(project_root) or project_root
+        return os.path.join(run_dir, "click_guard_diagnostics.jsonl")
+
+    def _coerce_int(self, value, default: int = 0) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return default
+
+    def _coerce_point(self, position) -> Optional[Tuple[int, int]]:
+        if isinstance(position, (list, tuple)) and len(position) >= 2:
+            try:
+                return (int(position[0]), int(position[1]))
+            except Exception:
+                return None
+        return None
+
+    def _log_click_guard(self, reason: str, node_name: str = "", **data) -> None:
+        event = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "reason": reason,
+            "node_name": node_name,
+            "hwnd": self._bound_window,
+        }
+        event.update(data)
+
+        if self._bound_window:
+            try:
+                from bt_utils.window_manager import WindowManager
+                event.setdefault("window_rect", WindowManager.get_window_rect(self._bound_window))
+                event.setdefault("window_title", WindowManager.get_window_title(self._bound_window))
+                event.setdefault("foreground_hwnd", WindowManager.get_foreground_window())
+            except Exception as exc:
+                event.setdefault("window_info_error", repr(exc))
+
+        LogManager.debug_print(f"[CTX] click_guard: {event}")
+
+        try:
+            log_path = self._click_guard_log_path()
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        except Exception as exc:
+            LogManager.debug_print(f"[CTX] click_guard: failed to write diagnostics: {exc!r}")
+
+    def _foreground_matches_bound_window(self) -> bool:
+        if not self._bound_window:
+            return True
+
+        try:
+            from bt_utils.window_manager import WindowManager
+
+            if WindowManager.is_foreground_window(self._bound_window):
+                return True
+
+            foreground = WindowManager.get_foreground_window()
+            if not foreground:
+                return False
+
+            bound_pid = WindowManager.get_window_pid(self._bound_window)
+            foreground_pid = WindowManager.get_window_pid(foreground)
+            return bool(bound_pid and foreground_pid and bound_pid == foreground_pid)
+        except Exception:
+            return False
+
+    def wait_for_bound_window_stable(
+        self,
+        node_name: str = "",
+        timeout: float = 1.8,
+        interval: float = 0.2,
+        required_stable_checks: int = 3,
+        require_foreground: bool = True,
+    ) -> bool:
+        if not self._bound_window:
+            return True
+
+        from bt_utils.window_manager import WindowManager
+
+        deadline = time.monotonic() + max(timeout, interval)
+        stable_count = 0
+        last_snapshot = None
+        attempts = 0
+
+        while time.monotonic() < deadline:
+            attempts += 1
+            hwnd = self._bound_window
+            if not WindowManager.is_window_valid(hwnd):
+                self._log_click_guard("stabilize_window_invalid", node_name=node_name, attempt=attempts)
+                time.sleep(interval)
+                continue
+
+            rect = WindowManager.get_window_rect(hwnd)
+            title = WindowManager.get_window_title(hwnd)
+            if not rect or not title:
+                self._log_click_guard(
+                    "stabilize_window_not_ready",
+                    node_name=node_name,
+                    attempt=attempts,
+                    observed_rect=rect,
+                    observed_title=title,
+                )
+                WindowManager.set_foreground_window(hwnd)
+                time.sleep(interval)
+                continue
+
+            if require_foreground and not self._foreground_matches_bound_window():
+                self._log_click_guard(
+                    "stabilize_window_not_foreground",
+                    node_name=node_name,
+                    attempt=attempts,
+                    observed_rect=rect,
+                    observed_title=title,
+                )
+                WindowManager.set_foreground_window(hwnd)
+                time.sleep(interval)
+                continue
+
+            snapshot = (rect, title)
+            if snapshot == last_snapshot:
+                stable_count += 1
+            else:
+                stable_count = 1
+                last_snapshot = snapshot
+
+            if stable_count >= max(1, required_stable_checks):
+                if attempts > required_stable_checks:
+                    self._log_click_guard(
+                        "stabilize_window_ready",
+                        node_name=node_name,
+                        attempts=attempts,
+                        stable_count=stable_count,
+                        observed_rect=rect,
+                        observed_title=title,
+                    )
+                return True
+
+            time.sleep(interval)
+
+        self._log_click_guard(
+            "stabilize_window_timeout",
+            node_name=node_name,
+            attempts=attempts,
+            stable_count=stable_count,
+            timeout=timeout,
+        )
+        return False
+
+    def _ensure_bound_window_ready(self, mouse_method: str, node_name: str = "") -> bool:
+        if mouse_method == "bg" or not self._bound_window:
+            return True
+
+        from bt_utils.window_manager import WindowManager
+
+        hwnd = self._bound_window
+        if not WindowManager.is_window_valid(hwnd):
+            self._log_click_guard("window_invalid", node_name=node_name)
+            return False
+
+        rect = WindowManager.get_window_rect(hwnd)
+        title = WindowManager.get_window_title(hwnd)
+        if not rect or not title:
+            self._log_click_guard("window_not_ready", node_name=node_name, observed_rect=rect, observed_title=title)
+            return self.wait_for_bound_window_stable(node_name=node_name, timeout=1.2, interval=0.2, required_stable_checks=2)
+
+        for attempt in range(3):
+            if self._foreground_matches_bound_window():
+                return True
+
+            self._log_click_guard("window_not_foreground", node_name=node_name, attempt=attempt + 1)
+            switched = WindowManager.set_foreground_window(hwnd)
+            if not switched:
+                self._log_click_guard("foreground_switch_failed", node_name=node_name, attempt=attempt + 1)
+            time.sleep(0.2)
+
+        if self._foreground_matches_bound_window():
+            return self.wait_for_bound_window_stable(node_name=node_name, timeout=1.0, interval=0.2, required_stable_checks=2)
+
+        self._log_click_guard("foreground_not_acquired", node_name=node_name)
+        return False
+
+    def _screen_point_in_bound_client(self, screen_position: tuple):
+        if not self._bound_window:
+            return True, None, None
+
+        point = self._coerce_point(screen_position)
+        if not point:
+            return False, None, None
+
+        from bt_utils.coordinate import CoordinateConverter
+
+        client_rect = CoordinateConverter.get_client_rect(self._bound_window)
+        client_point = CoordinateConverter.absolute_to_client(point[0], point[1], self._bound_window)
+        if not client_rect or not client_point:
+            return False, client_point, client_rect
+
+        left, top, right, bottom = client_rect
+        inside = left <= client_point[0] < right and top <= client_point[1] < bottom
+        return inside, client_point, client_rect
+
+    def _prepare_foreground_click_position(
+        self,
+        position: tuple,
+        x_float: int = 0,
+        y_float: int = 0,
+        node_name: str = "",
+    ) -> Tuple[int, int]:
+        from bt_utils.helpers import get_random_value
+
+        original_point = self._coerce_point(position)
+        if not original_point:
+            raise RuntimeError("Invalid bound window click position")
+
+        x_float = self._coerce_int(x_float)
+        y_float = self._coerce_int(y_float)
+
+        last_position = None
+        last_client_point = None
+        last_client_rect = None
+
+        for attempt in range(2):
+            if attempt > 0:
+                if not self._ensure_bound_window_ready("fg", node_name=node_name):
+                    continue
+
+            converted = self.convert_to_screen_coords(original_point)
+            screen_point = self._coerce_point(converted)
+            if not screen_point:
+                self._log_click_guard(
+                    "coordinate_conversion_failed",
+                    node_name=node_name,
+                    original_position=original_point,
+                    converted_position=converted,
+                    attempt=attempt + 1,
+                )
+                continue
+
+            click_position = screen_point
+            if x_float > 0 or y_float > 0:
+                px = get_random_value(click_position[0], x_float, min_value=0)
+                py = get_random_value(click_position[1], y_float, min_value=0)
+                click_position = (px, py)
+
+            inside, client_point, client_rect = self._screen_point_in_bound_client(click_position)
+            last_position = click_position
+            last_client_point = client_point
+            last_client_rect = client_rect
+            if inside:
+                if attempt > 0:
+                    self._log_click_guard(
+                        "position_recovered",
+                        node_name=node_name,
+                        original_position=original_point,
+                        screen_position=click_position,
+                        client_position=client_point,
+                        client_rect=client_rect,
+                        attempt=attempt + 1,
+                    )
+                return click_position
+
+            self._log_click_guard(
+                "position_outside_client",
+                node_name=node_name,
+                original_position=original_point,
+                screen_position=click_position,
+                client_position=client_point,
+                client_rect=client_rect,
+                attempt=attempt + 1,
+            )
+
+        self._log_click_guard(
+            "position_rejected",
+            node_name=node_name,
+            original_position=original_point,
+            screen_position=last_position,
+            client_position=last_client_point,
+            client_rect=last_client_rect,
+        )
+        raise RuntimeError("Bound window click position outside client area")
+
     def execute_mouse_click(self, button: str = "left", position: tuple = None,
                            action: str = "press", duration: int = 0,
-                           x_float: int = 0, y_float: int = 0) -> None:
+                           x_float: int = 0, y_float: int = 0,
+                           node_name: str = "") -> None:
         """执行鼠标点击（全局自动坐标转换）"""
         manager = self._get_input_manager()
         mouse_method = manager.get_mouse_method()
         original_position = position
+        x_float = self._coerce_int(x_float)
+        y_float = self._coerce_int(y_float)
 
         if position:
             if mouse_method == "bg" and self._bound_window:
                 LogManager.debug_print(f"[CTX] mouse_click: 后台模式，坐标不转换 pos={position}")
             elif self._bound_window:
-                position = self.convert_to_screen_coords(position)
+                if not self._ensure_bound_window_ready(mouse_method, node_name=node_name):
+                    raise RuntimeError("Bound window is not ready for foreground click")
+                position = self._prepare_foreground_click_position(
+                    position,
+                    x_float=x_float,
+                    y_float=y_float,
+                    node_name=node_name,
+                )
+                x_float = 0
+                y_float = 0
                 LogManager.debug_print(f"[CTX] mouse_click: 坐标转换 {original_position} → {position}")
 
             if x_float > 0 or y_float > 0:

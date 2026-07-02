@@ -1425,7 +1425,8 @@ class StartNode(CompositeNode):
         bind_window = self.config.get_bool("bind_window", False)
         window_title = self.config.get("window_title", "")
         if bind_window and window_title and not self._window_bound:
-            self._bind_window_to_context(context)
+            if not self._bind_window_to_context(context):
+                return NodeStatus.FAILURE
             self._window_bound = True
 
         if not self.children:
@@ -1489,7 +1490,7 @@ class StartNode(CompositeNode):
         for child in self.children:
             child.reset()
 
-    def _bind_window_to_context(self, context: "ExecutionContext") -> None:
+    def _bind_window_to_context(self, context: "ExecutionContext") -> bool:
         from bt_utils.window_manager import WindowManager
 
         window_hwnd = self.config.get_int("window_hwnd", 0)
@@ -1521,6 +1522,19 @@ class StartNode(CompositeNode):
 
             if window_hwnd != hwnd:
                 self.config.set("window_hwnd", hwnd)
+            if hasattr(context, "wait_for_bound_window_stable"):
+                if not context.wait_for_bound_window_stable(
+                    node_name=self.name,
+                    timeout=2.0,
+                    interval=0.2,
+                    required_stable_checks=3,
+                    require_foreground=True,
+                ):
+                    LogManager.debug_print(
+                        f"[DEBUG] StartNode bound window not stable: hwnd={hwnd}, title='{window_title}'"
+                    )
+                    return False
+            return True
         else:
             LogManager.instance().log_failure(
                 node_type="开始节点",
@@ -1529,6 +1543,8 @@ class StartNode(CompositeNode):
             )
             LogManager.debug_print(f"[DEBUG] StartNode 未找到窗口: hwnd={window_hwnd}, pid={window_pid}, title='{window_title}'")
     
+            return False
+
     def _reset_for_retry(self) -> None:
         """重试时重置状态（保留重试计数器）"""
         super()._reset_for_retry()
