@@ -140,15 +140,6 @@ export interface AuditLogItem {
   created_at: string;
 }
 
-export interface ContactListItem {
-  id: number;
-  wechat_nickname?: string | null;
-  wechat_id?: string | null;
-  tag?: string | null;
-  status?: string | null;
-  remark?: string | null;
-}
-
 export interface FeedbackItem {
   id: number;
   user_id: number;
@@ -298,12 +289,6 @@ export async function getTaskResults(taskId: number): Promise<TaskResultItem[]> 
 
 export async function getAuditLogs(page = 1, pageSize = 20): Promise<PageResponse<AuditLogItem>> {
   return request(`/admin/audit-logs?page=${page}&page_size=${pageSize}`);
-}
-
-export async function getContacts(page = 1, pageSize = 20, q?: string): Promise<PageResponse<ContactListItem>> {
-  let path = `/admin/contacts?page=${page}&page_size=${pageSize}`;
-  if (q) path += `&q=${encodeURIComponent(q)}`;
-  return request(path);
 }
 
 export async function getFeedback(page = 1, pageSize = 20): Promise<PageResponse<FeedbackItem>> {

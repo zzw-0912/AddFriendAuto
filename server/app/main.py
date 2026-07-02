@@ -7,7 +7,6 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
-from app.api.contacts import router as contacts_router
 from app.api.devices import router as devices_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
@@ -47,7 +46,6 @@ app.include_router(status_router)
 app.include_router(plans_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
-app.include_router(contacts_router)
 app.include_router(feedback_router)
 app.include_router(profile_router)
 app.include_router(tasks_router)

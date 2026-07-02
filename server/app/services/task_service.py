@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
+from app.models.membership import Membership
 from app.models.task import Task
 from app.models.task_result import TaskResult
 from app.models.task_target import TaskTarget
@@ -102,6 +103,49 @@ def allowed_slot_count(plan_id: int | None, has_membership: bool) -> int:
     return 1
 
 
+def access_snapshot(
+    user_id: int,
+    db: Session,
+    lock_quota: bool = False,
+) -> tuple[Membership | None, MembershipInfo, TrialQuota | None, TrialInfo]:
+    membership_info = MembershipInfo()
+    active_membership = get_current_membership(db, user_id)
+    if active_membership:
+        membership_info = MembershipInfo(
+            is_active=True,
+            plan_id=active_membership.plan_id,
+            starts_at=active_membership.starts_at,
+            ends_at=active_membership.ends_at,
+        )
+
+    quota_query = db.query(TrialQuota).filter(TrialQuota.user_id == user_id)
+    if lock_quota:
+        quota_query = quota_query.with_for_update()
+    quota = quota_query.first()
+
+    trial_info = TrialInfo(total=0, used=0, remaining=0)
+    if quota:
+        trial_info = TrialInfo(
+            total=quota.total_count,
+            used=quota.used_count,
+            remaining=quota.remaining_count,
+        )
+
+    return active_membership, membership_info, quota, trial_info
+
+
+def finish_task_in_place(task: Task, db: Session) -> None:
+    task.status = "finished"
+    task.finished_at = datetime.now(timezone.utc)
+    release_claimed_targets([task.id], db)
+
+
+def trial_claim_limit(daily_limit: int | None, remaining: int) -> int:
+    requested = max(1, int(daily_limit or 1))
+    available = max(0, int(remaining or 0))
+    return min(requested, available)
+
+
 def finish_stale_running_tasks(user_id: int, slot_id: int, db: Session) -> bool:
     stale_before = datetime.utcnow() - timedelta(hours=STALE_RUNNING_TASK_HOURS)
     stale_tasks = (
@@ -163,25 +207,7 @@ def start_check(
     device = db.query(Device).filter(Device.user_id == user.id, Device.status == "active").first()
     device_id = device.id if device else 0
 
-    membership_info = MembershipInfo()
-    active_membership = get_current_membership(db, user.id)
-    if active_membership:
-        membership_info = MembershipInfo(
-            is_active=True,
-            plan_id=active_membership.plan_id,
-            starts_at=active_membership.starts_at,
-            ends_at=active_membership.ends_at,
-        )
-
-    quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).first()
-    trial_info = TrialInfo()
-    if quota:
-        trial_info = TrialInfo(
-            total=quota.total_count,
-            used=quota.used_count,
-            remaining=quota.remaining_count,
-        )
-
+    active_membership, membership_info, _, trial_info = access_snapshot(user.id, db)
     has_remaining = membership_info.is_active or (trial_info.remaining > 0)
     if not has_remaining:
         return StartCheckResponse(
@@ -201,13 +227,18 @@ def start_check(
         )
 
     finish_existing_running_tasks(user.id, slot_id, db)
+    effective_daily_limit = (
+        daily_limit
+        if membership_info.is_active
+        else trial_claim_limit(daily_limit, trial_info.remaining)
+    )
 
     task = Task(
         user_id=user.id,
         device_id=device_id,
         slot_id=slot_id,
         target_type=target_type,
-        daily_limit=daily_limit,
+        daily_limit=effective_daily_limit,
         create_tag=create_tag,
         greeting_text=greeting_text,
         status="running",
@@ -231,6 +262,21 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
     if task.status != "running":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not running")
 
+    _, membership_info, _, trial_info = access_snapshot(user.id, db, lock_quota=True)
+    if not membership_info.is_active and trial_info.remaining <= 0:
+        finish_task_in_place(task, db)
+        db.commit()
+        return ClaimTargetsResponse(
+            can_claim=False,
+            reason="免费次数已用完，任务已停止",
+            task_id=task.id,
+            target_type=task.target_type,
+            count=0,
+            targets=[],
+            membership=membership_info,
+            trial=trial_info,
+        )
+
     existing_targets = (
         db.query(TaskTarget)
         .filter(TaskTarget.claimed_task_id == task.id)
@@ -238,17 +284,34 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
         .all()
     )
     if existing_targets:
+        if not membership_info.is_active:
+            limit = trial_claim_limit(task.daily_limit, trial_info.remaining)
+            for target in existing_targets[limit:]:
+                target.status = "pending"
+                target.claimed_task_id = None
+                target.claimed_at = None
+                target.result_message = None
+            if len(existing_targets) > limit:
+                existing_targets = existing_targets[:limit]
+                db.commit()
         return ClaimTargetsResponse(
             task_id=task.id,
             target_type=task.target_type,
             count=len(existing_targets),
             targets=[serialize_target(target) for target in existing_targets],
+            membership=membership_info,
+            trial=trial_info,
         )
 
-    limit = random_claim_limit(task.daily_limit)
+    limit = (
+        random_claim_limit(task.daily_limit)
+        if membership_info.is_active
+        else trial_claim_limit(task.daily_limit, trial_info.remaining)
+    )
     targets = (
         db.query(TaskTarget)
         .filter(
+            TaskTarget.target_type == task.target_type,
             TaskTarget.status == "pending",
         )
         .order_by(random_order_expression(db))
@@ -273,6 +336,8 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
         target_type=task.target_type,
         count=len(targets),
         targets=[serialize_target(target) for target in targets],
+        membership=membership_info,
+        trial=trial_info,
     )
 
 

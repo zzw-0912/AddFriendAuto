@@ -83,7 +83,6 @@ flowchart LR
 | 任务 | `tasks` / `Task` | 记录一次自动化执行的主过程 |
 | 目标池 | `task_targets` / `TaskTarget` | 存放待执行的手机号或微信号目标 |
 | 任务结果 | `task_results` / `TaskResult` | 记录 success、failed、invalid 等执行结果 |
-| 联系人 | `contacts` / `Contact` | 后台联系人检索与兼容历史结果归档 |
 | 用户反馈 | `feedbacks` / `Feedback` | 承接问题、建议、截图 |
 | 后台审计 | `admin_audit_logs` / `AdminAuditLog` | 记录关键运营动作 |
 

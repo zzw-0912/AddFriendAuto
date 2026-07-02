@@ -25,7 +25,6 @@ from app.services.admin_service import (
     confirm_order_payment,
     create_audit_log,
     list_audit_logs,
-    list_contacts,
     list_devices,
     list_feedback,
     list_orders,
@@ -233,26 +232,6 @@ def get_audit_logs(
         "audit_log",
         None,
         audit_detail(page=page, page_size=page_size, total=result.get("total")),
-        db,
-    )
-    return result
-
-
-@router.get("/contacts")
-def get_contacts(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    q: str | None = Query(None),
-    admin: AdminUser = Depends(get_current_admin),
-    db: Session = Depends(get_db),
-):
-    result = list_contacts(page, page_size, q, db)
-    create_audit_log(
-        admin.id,
-        "view_contacts",
-        "contact",
-        None,
-        audit_detail(page=page, page_size=page_size, q=q, total=result.get("total")),
         db,
     )
     return result

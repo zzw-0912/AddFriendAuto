@@ -35,7 +35,7 @@ def get_user_status(user: User, db: Session) -> UserStatusResponse:
 
     # Trial quota
     quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).first()
-    trial_info = TrialInfo()
+    trial_info = TrialInfo(total=0, used=0, remaining=0)
     if quota:
         trial_info = TrialInfo(
             total=quota.total_count,

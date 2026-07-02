@@ -39,10 +39,14 @@ class TaskTargetItem(BaseModel):
 
 
 class ClaimTargetsResponse(BaseModel):
+    can_claim: bool = True
+    reason: str | None = None
     task_id: int
     target_type: Literal["contact", "phone", "wechat_id"]
     count: int
     targets: list[TaskTargetItem]
+    membership: MembershipInfo | None = None
+    trial: TrialInfo | None = None
 
 
 class TaskResponse(BaseModel):

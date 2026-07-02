@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.admin_user import AdminUser
-from app.models.contact import Contact
 from app.models.device import Device
 from app.models.feedback import Feedback
 from app.models.membership import Membership
@@ -559,27 +558,6 @@ def list_audit_logs(page: int, page_size: int, db: Session) -> dict:
         action=l.action, target_type=l.target_type, target_id=l.target_id,
         detail=l.detail, created_at=l.created_at,
     ) for l in logs]
-
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
-
-
-def list_contacts(page: int, page_size: int, q: str | None, db: Session) -> dict:
-    query = db.query(Contact).order_by(Contact.id.desc())
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            Contact.wechat_nickname.ilike(like) | Contact.wechat_id.ilike(like)
-        )
-    total = query.count()
-    contacts = query.offset((page - 1) * page_size).limit(page_size).all()
-
-    items = []
-    for c in contacts:
-        items.append({
-            "id": c.id, "wechat_nickname": c.wechat_nickname,
-            "wechat_id": c.wechat_id, "tag": c.tag,
-            "status": c.status, "remark": c.remark, "created_at": c.created_at,
-        })
 
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 

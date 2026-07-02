@@ -273,7 +273,7 @@ server {
 }
 ```
 
-如果还要通过同一域名服务桌面端 API，需要按实际客户端请求补齐 `/auth`、`/devices`、`/me`、`/plans`、`/orders`、`/tasks`、`/contacts`、`/feedback`、`/payments` 等后端路径代理。
+如果还要通过同一域名服务桌面端 API，需要按实际客户端请求补齐 `/auth`、`/devices`、`/me`、`/plans`、`/orders`、`/tasks`、`/feedback`、`/payments` 等后端路径代理。
 
 ## 6. 桌面端打包与发版
 

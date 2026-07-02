@@ -37,10 +37,14 @@ interface TaskTarget {
 }
 
 interface ClaimTargetsResponse {
+  can_claim?: boolean;
+  reason?: string | null;
   task_id: number;
   target_type: TargetType;
   count: number;
   targets: TaskTarget[];
+  membership?: UserStatus["membership"] | null;
+  trial?: UserStatus["trial"] | null;
 }
 
 interface AccessSnapshot {
@@ -422,6 +426,15 @@ function TaskPanel({
       const claimData: ClaimTargetsResponse = await claimRes.json();
       if (!claimRes.ok) {
         throw new Error((claimData as any)?.detail || "准备任务失败");
+      }
+      if (claimData.can_claim === false) {
+        const claimAccess = asAccessSnapshot(claimData);
+        addUniqueLog(claimData.reason || paymentNotice(claimAccess), "error");
+        await finishCurrentTask();
+        if (needsPayment(claimAccess)) {
+          onOpenPayment();
+        }
+        return;
       }
       if (!claimData.targets.length) {
         addUniqueLog("暂无可添加的好友名单", "error");
