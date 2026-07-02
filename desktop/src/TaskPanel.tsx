@@ -43,6 +43,16 @@ interface ClaimTargetsResponse {
   targets: TaskTarget[];
 }
 
+interface AccessSnapshot {
+  membership?: UserStatus["membership"] | null;
+  trial?: UserStatus["trial"] | null;
+}
+
+interface ResultResponse {
+  charged?: boolean;
+  duplicate?: boolean;
+}
+
 interface LogEntry {
   id: number;
   text: string;
@@ -52,12 +62,9 @@ interface LogEntry {
 let logId = 0;
 
 const BOOT_STEPS = [
-  "建立加密数据传输信道",
-  "同步本地联系人节点数据库",
-  "演算全域风控监测矩阵阈值",
-  "解析用户存量链路容量上限",
-  "分配交互行为缓冲算力池",
-  "规避高频访问识别探针",
+  "正在准备任务",
+  "正在检查微信窗口",
+  "正在同步免费额度",
 ];
 
 const START_DELAY_SECONDS = 5;
@@ -72,9 +79,42 @@ function targetTypeLabel(type: TargetType) {
   return type === "wechat_id" ? "微信号" : "手机号";
 }
 
+function asAccessSnapshot(value: unknown): AccessSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  if (!("membership" in value) || !("trial" in value)) return null;
+  return value as AccessSnapshot;
+}
+
+function trialRemaining(access: AccessSnapshot | null | undefined) {
+  return Math.max(0, Number(access?.trial?.remaining ?? 0));
+}
+
+function isMembershipExpired(access: AccessSnapshot | null | undefined) {
+  const membership = access?.membership;
+  if (!membership || membership.is_active || !membership.ends_at) return false;
+  const endsAt = new Date(membership.ends_at).getTime();
+  return Number.isFinite(endsAt) && endsAt <= Date.now();
+}
+
+function needsPayment(access: AccessSnapshot | null | undefined) {
+  if (!access) return false;
+  return !access.membership?.is_active && trialRemaining(access) <= 0;
+}
+
+function accessNotice(access: AccessSnapshot | null | undefined) {
+  if (!access) return "";
+  if (access.membership?.is_active) return "会员状态正常";
+  return `免费额度还剩 ${trialRemaining(access)} 次`;
+}
+
+function paymentNotice(access: AccessSnapshot | null | undefined) {
+  return isMembershipExpired(access) ? "会员已过期，请充值后继续使用" : "免费额度已用完，请充值后继续使用";
+}
+
 function TaskPanel({
   apiBase,
   token,
+  status,
   slotId,
   taskDefaults,
   taskDefaultsVersion,
@@ -98,24 +138,45 @@ function TaskPanel({
   const taskIdRef = useRef<number | null>(null);
   const isFinishingRef = useRef(false);
   const processedResultKeysRef = useRef<Set<string>>(new Set());
+  const lastLogTextRef = useRef("");
+  const lastTrialRemainingRef = useRef<number | null>(null);
   const startDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const addLog = useCallback((text: string, type: LogEntry["type"] = "info") => {
     logId += 1;
+    lastLogTextRef.current = text;
     setLogs((prev) => [...prev, { id: logId, text, type }]);
   }, []);
+
+  const addUniqueLog = useCallback((text: string, type: LogEntry["type"] = "info") => {
+    if (lastLogTextRef.current === text) return;
+    addLog(text, type);
+  }, [addLog]);
+
+  const addAccessLog = useCallback((access: AccessSnapshot | null | undefined) => {
+    if (!access) return;
+    if (access.membership?.is_active) {
+      addUniqueLog(accessNotice(access), "info");
+      return;
+    }
+
+    const remaining = trialRemaining(access);
+    if (lastTrialRemainingRef.current === remaining) return;
+    lastTrialRemainingRef.current = remaining;
+    addUniqueLog(accessNotice(access), remaining > 0 ? "info" : "error");
+  }, [addUniqueLog]);
 
   const reportResult = useCallback(async (
     contactId: string | number | undefined,
     targetId: string | number | undefined,
     event: string,
     message: string,
-  ) => {
+  ): Promise<ResultResponse | null> => {
     const tid = taskIdRef.current;
-    if (!tid || (!targetId && !contactId)) return;
+    if (!tid || (!targetId && !contactId)) return null;
     try {
-      await fetch(`${apiBase}/tasks/${tid}/results`, {
+      const res = await fetch(`${apiBase}/tasks/${tid}/results`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -125,10 +186,12 @@ function TaskPanel({
           message,
         }),
       });
+      if (!res.ok) return null;
+      return await res.json() as ResultResponse;
     } catch {
-      addLog("上报结果失败", "error");
+      return null;
     }
-  }, [addLog, apiBase, token]);
+  }, [apiBase, token]);
 
   const finishCurrentTask = useCallback(async () => {
     const tid = taskIdRef.current;
@@ -140,14 +203,26 @@ function TaskPanel({
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch {
-      addLog("结束任务失败", "error");
+      addUniqueLog("任务状态同步失败，请稍后刷新", "error");
     }
     setTaskId(null);
     taskIdRef.current = null;
     setIsRunning(false);
     isFinishingRef.current = false;
-    onStatusChange();
-  }, [addLog, apiBase, onStatusChange, token]);
+    const latestStatus = asAccessSnapshot(await onStatusChange({ force: true }));
+    addAccessLog(latestStatus);
+  }, [addAccessLog, addUniqueLog, apiBase, onStatusChange, token]);
+
+  const refreshAccessLog = useCallback(async () => {
+    const latestStatus = asAccessSnapshot(await onStatusChange({ force: true }));
+    if (!latestStatus) return;
+    if (needsPayment(latestStatus)) {
+      addUniqueLog(paymentNotice(latestStatus), "error");
+      onOpenPayment();
+      return;
+    }
+    addAccessLog(latestStatus);
+  }, [addAccessLog, addUniqueLog, onOpenPayment, onStatusChange]);
 
   const handleScriptEvent = useCallback((event: { payload: string }) => {
     try {
@@ -159,7 +234,7 @@ function TaskPanel({
       if (eventRunId && !currentRunId) return;
 
       if (data.event === "exited") {
-        addLog("脚本进程已退出", "info");
+        addUniqueLog("任务已完成", "info");
         if (taskIdRef.current) {
           finishCurrentTask();
         } else {
@@ -169,7 +244,6 @@ function TaskPanel({
       }
 
       const msg = data.message || data.event;
-      const ts = data.timestamp ? data.timestamp.split("T")[1]?.split("+")[0] || "" : "";
       const resultKey = `${data.run_id || taskIdRef.current || ""}:${data.target_id || data.contact_id || ""}:${data.event}`;
       const isResultEvent = data.event === "success" || data.event === "failed" || data.event === "invalid";
       if (isResultEvent && processedResultKeysRef.current.has(resultKey)) {
@@ -178,40 +252,39 @@ function TaskPanel({
 
       switch (data.event) {
         case "started":
-          addLog(`[${ts}] 任务启动: ${msg}`, "info");
+          addUniqueLog("开始加微信好友", "info");
           break;
         case "progress":
-          addLog(`[${ts}] ${msg}`, "normal");
+          addUniqueLog("正在加微信好友", "normal");
           break;
         case "success":
           processedResultKeysRef.current.add(resultKey);
-          addLog(`[${ts}] ✅ ${msg}`, "success");
-          reportResult(data.contact_id, data.target_id, data.event, msg);
+          void reportResult(data.contact_id, data.target_id, data.event, msg).then((result) => {
+            if (result?.charged) void refreshAccessLog();
+          });
           break;
         case "failed":
           processedResultKeysRef.current.add(resultKey);
-          addLog(`[${ts}] ❌ ${msg}`, "failed");
-          reportResult(data.contact_id, data.target_id, data.event, msg);
+          void reportResult(data.contact_id, data.target_id, data.event, msg);
           break;
         case "invalid":
           processedResultKeysRef.current.add(resultKey);
-          addLog(`[${ts}] ⚠️ ${msg}`, "invalid");
-          reportResult(data.contact_id, data.target_id, data.event, msg);
+          void reportResult(data.contact_id, data.target_id, data.event, msg);
           break;
         case "error":
-          addLog(`[${ts}] 🔴 ${msg}`, "error");
+          addUniqueLog("任务运行异常，请稍后重试", "error");
           break;
         case "finished":
-          addLog(`[${ts}] 任务完成: ${msg}`, "info");
+          addUniqueLog("任务已完成", "info");
           finishCurrentTask();
           break;
         default:
-          addLog(`[${ts}] ${msg}`, "normal");
+          addUniqueLog("任务正在运行", "normal");
       }
     } catch {
-      addLog(`收到脚本输出: ${event.payload}`, "normal");
+      addUniqueLog("任务正在运行", "normal");
     }
-  }, [addLog, finishCurrentTask, reportResult, slotId]);
+  }, [addUniqueLog, finishCurrentTask, refreshAccessLog, reportResult, slotId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -282,27 +355,30 @@ function TaskPanel({
 
   const runStartTask = async () => {
     if (!isOnline) {
-      addLog("无法启动：网络连接已断开", "error");
+      addUniqueLog("网络已断开，请恢复后再开始", "error");
       return;
     }
 
     const wechatBinding = loadWeChatBindings()[String(slotId)];
     if (!wechatBinding) {
-      addLog(`无法启动：请先在“我的”页面绑定微信${slotId}窗口`, "error");
+      addUniqueLog(`请先在“我的”页面绑定微信${slotId}窗口`, "error");
       return;
     }
 
     setLogs([]);
+    lastLogTextRef.current = "";
+    lastTrialRemainingRef.current = null;
     processedResultKeysRef.current.clear();
 
     try {
+      addUniqueLog("正在检查微信窗口", "info");
       const bindingAlive = await invoke<boolean>("validate_wechat_binding", { binding: wechatBinding });
       if (!bindingAlive) {
-        addLog(`无法启动：微信${slotId}绑定窗口已失效，请重新绑定`, "error");
+        addUniqueLog(`微信${slotId}窗口已失效，请重新绑定`, "error");
         return;
       }
 
-      addLog("正在校验会员状态...", "info");
+      addUniqueLog("正在同步免费额度", "info");
       const res = await fetch(`${apiBase}/tasks/start-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -316,31 +392,35 @@ function TaskPanel({
       });
       const data = await res.json();
       if (!res.ok || !data.can_start) {
-        addLog(`无法启动: ${data.reason || "校验失败"}`, "error");
-        const noRemainingAccess = !data.membership?.is_active && (data.trial?.remaining ?? 0) <= 0;
-        if (noRemainingAccess) {
+        const access = { membership: data.membership, trial: data.trial };
+        if (needsPayment(access)) {
+          addUniqueLog(paymentNotice(access), "error");
           await onStatusChange({ force: true });
           onOpenPayment();
+        } else {
+          addUniqueLog("暂时无法启动任务，请稍后重试", "error");
         }
         return;
       }
 
+      const access = { membership: data.membership, trial: data.trial };
+      addAccessLog(access);
       setTaskId(data.task_id);
       taskIdRef.current = data.task_id;
       isFinishingRef.current = false;
       setIsRunning(true);
 
-      addLog(`正在领取${targetTypeLabel(targetType)}任务数据...`, "info");
+      addUniqueLog(`正在准备${targetTypeLabel(targetType)}名单`, "info");
       const claimRes = await fetch(`${apiBase}/tasks/${data.task_id}/claim-targets`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
       const claimData: ClaimTargetsResponse = await claimRes.json();
       if (!claimRes.ok) {
-        throw new Error((claimData as any)?.detail || "领取任务数据失败");
+        throw new Error((claimData as any)?.detail || "准备任务失败");
       }
       if (!claimData.targets.length) {
-        addLog(`暂无可执行的${targetTypeLabel(targetType)}任务数据`, "error");
+        addUniqueLog("暂无可添加的好友名单", "error");
         await finishCurrentTask();
         return;
       }
@@ -357,10 +437,10 @@ function TaskPanel({
         targets: claimData.targets,
       };
 
-      addLog(`已领取 ${claimData.targets.length} 条${targetTypeLabel(claimData.target_type)}数据，正在启动脚本`, "info");
+      addUniqueLog("正在打开微信中", "info");
       await invoke("start_task", { configJson: JSON.stringify(config) });
     } catch (e: any) {
-      addLog(`启动失败: ${e}`, "error");
+      addUniqueLog("启动失败，请稍后重试", "error");
       if (taskIdRef.current) {
         await finishCurrentTask();
       } else {
@@ -369,8 +449,14 @@ function TaskPanel({
     }
   };
 
-  const handleStartClick = () => {
+  const handleStartClick = async () => {
     if (!isOnline || isRunning || startCountdown > 0) return;
+    const latestStatus = asAccessSnapshot(await onStatusChange({ force: true })) ?? status;
+    if (needsPayment(latestStatus)) {
+      addUniqueLog(paymentNotice(latestStatus), "error");
+      onOpenPayment();
+      return;
+    }
     setShowAutomationPrompt(true);
   };
 
@@ -383,7 +469,7 @@ function TaskPanel({
     if (startCountdown > 0) return;
     let remaining = START_DELAY_SECONDS;
     setStartCountdown(remaining);
-    addLog(`已确认自动化提示，${START_DELAY_SECONDS} 秒后启动，请切换到微信${slotId}主窗口`, "info");
+    addUniqueLog(`请在 ${START_DELAY_SECONDS} 秒内切换到微信${slotId}窗口`, "info");
     startCountdownTimerRef.current = setInterval(() => {
       remaining -= 1;
       setStartCountdown(Math.max(remaining, 0));
@@ -396,13 +482,13 @@ function TaskPanel({
   };
 
   const handleStop = async () => {
-    addLog("正在停止任务...", "info");
+    addUniqueLog("正在停止任务", "info");
     try {
       const runId = taskIdRef.current ? String(taskIdRef.current) : "";
       if (runId) await invoke("stop_task", { runId });
     } catch { /* ignore */ }
     await finishCurrentTask();
-    addLog("任务已停止", "info");
+    addUniqueLog("任务已停止", "info");
   };
 
   return (
@@ -471,7 +557,7 @@ function TaskPanel({
         </div>
       </div>
 
-      {/* Terminal — replaces log area */}
+      {/* Task reminders */}
       <div className="section-card terminal-card">
         <div className="terminal-header">
           <div className="terminal-dots">
@@ -479,10 +565,10 @@ function TaskPanel({
             <span className="terminal-dot dot-yellow" />
             <span className="terminal-dot dot-green" />
           </div>
-          <span className="terminal-title">人际链路交互终端 v3.2.1</span>
+          <span className="terminal-title">任务提醒</span>
         </div>
         <div className="terminal-body">
-          <div className="term-line term-title">人际链路交互终端初始化</div>
+          <div className="term-line term-title">任务状态</div>
           {BOOT_STEPS.slice(0, visibleSteps).map((step, i) => (
             <div key={i} className="term-line term-status">
               <span className="term-arrow">▶</span> {step}...
@@ -491,7 +577,7 @@ function TaskPanel({
           ))}
           {!bootDone && visibleSteps < BOOT_STEPS.length && <span className="term-cursor">█</span>}
           {bootDone && (
-            <div className="term-line term-ready">链路解析内核就绪，等待人工交互指令输入</div>
+            <div className="term-line term-ready">准备就绪，等待开始任务</div>
           )}
           {logs.map((entry) => (
             <div key={entry.id} className={`term-line term-log term-log-${entry.type}`}>
@@ -501,7 +587,7 @@ function TaskPanel({
           <div ref={logEndRef} />
         </div>
         <div className="terminal-footer">
-          全域行为监测系统实时在线，高密度连续发起链路申请将触发交互权限锁定，操作风险由使用者全权承担。本终端仅提供数据查阅能力，无自主批量交互执行模块。
+          运行期间请不要操作鼠标和键盘
         </div>
       </div>
 
