@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNetworkStatus } from "./useNetworkStatus";
 import { loadTaskSlotConfig, loadWeChatBindings, saveTaskSlotConfig } from "./localSettings";
-import { ACCOUNT_AGE_PROFILE_OPTIONS, type AccountAgeProfile, type TargetType, type TaskDefaults, type UserStatus } from "./types";
+import { ACCOUNT_AGE_PROFILE_OPTIONS, type AccountAgeProfile, type TargetType, type TaskDefaults, type UserStatus, type WeChatWindowBinding } from "./types";
 
 interface Props {
   apiBase: string;
@@ -15,6 +15,7 @@ interface Props {
   onStatusChange: (options?: { force?: boolean }) => void | Promise<unknown>;
   onOpenTutorial: () => void;
   onOpenPayment: () => void;
+  onOpenProfile: () => void;
 }
 
 interface ScriptEvent {
@@ -120,6 +121,7 @@ function TaskPanel({
   onStatusChange,
   onOpenTutorial,
   onOpenPayment,
+  onOpenProfile,
 }: Props) {
   const { isOnline } = useNetworkStatus();
   const [targetType, setTargetType] = useState<TargetType>(() => loadTaskSlotConfig(slotId, taskDefaults).targetType);
@@ -133,6 +135,7 @@ function TaskPanel({
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [bootDone, setBootDone] = useState(false);
   const [toast, setToast] = useState("");
+  const [bindingPromptMessage, setBindingPromptMessage] = useState("");
   const [showAutomationPrompt, setShowAutomationPrompt] = useState(false);
   const [startCountdown, setStartCountdown] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -379,15 +382,36 @@ function TaskPanel({
     showToast(`微信${slotId}配置已保存`);
   };
 
+  const checkWechatBinding = async (): Promise<{ binding: WeChatWindowBinding | null; message: string | null }> => {
+    const wechatBinding = loadWeChatBindings()[String(slotId)];
+    if (!wechatBinding) {
+      return {
+        binding: null,
+        message: `微信${slotId}还没有绑定窗口，请先去绑定后再开始任务`,
+      };
+    }
+
+    const bindingAlive = await invoke<boolean>("validate_wechat_binding", { binding: wechatBinding });
+    if (!bindingAlive) {
+      return {
+        binding: null,
+        message: `微信${slotId}绑定窗口已失效，请重新绑定后再开始任务`,
+      };
+    }
+
+    return { binding: wechatBinding, message: null };
+  };
+
   const runStartTask = async () => {
     if (!isOnline) {
       addUniqueLog("网络已断开，请恢复后再开始", "error");
       return;
     }
 
-    const wechatBinding = loadWeChatBindings()[String(slotId)];
+    const bindingCheck = await checkWechatBinding();
+    const wechatBinding = bindingCheck.binding;
     if (!wechatBinding) {
-      addUniqueLog(`请先在“我的”页面绑定微信${slotId}窗口`, "error");
+      addUniqueLog(bindingCheck.message || `请先在“我的”页面绑定微信${slotId}窗口`, "error");
       return;
     }
 
@@ -503,6 +527,13 @@ function TaskPanel({
       onOpenPayment();
       return;
     }
+    const bindingCheck = await checkWechatBinding();
+    if (!bindingCheck.binding) {
+      const message = bindingCheck.message || `请先在“我的”页面绑定微信${slotId}窗口`;
+      addUniqueLog(message, "error");
+      setBindingPromptMessage(message);
+      return;
+    }
     setShowAutomationPrompt(true);
   };
 
@@ -510,6 +541,15 @@ function TaskPanel({
     clearStartDelay();
     setShowAutomationPrompt(false);
   }, [clearStartDelay]);
+
+  const handleCloseBindingPrompt = useCallback(() => {
+    setBindingPromptMessage("");
+  }, []);
+
+  const handleGoBindWechat = useCallback(() => {
+    setBindingPromptMessage("");
+    onOpenProfile();
+  }, [onOpenProfile]);
 
   const handleConfirmAutomationPrompt = () => {
     if (startCountdown > 0) return;
@@ -694,6 +734,34 @@ function TaskPanel({
               </button>
               <button className="automation-primary-btn" type="button" onClick={handleConfirmAutomationPrompt} disabled={startCountdown > 0}>
                 确认，5 秒后启动
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bindingPromptMessage && (
+        <div className="automation-warning-overlay" onClick={handleCloseBindingPrompt}>
+          <div className="automation-warning-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="automation-warning-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="4" y="3" width="16" height="12" rx="2.5" />
+                <path d="M8 21h8" />
+                <path d="M12 15v6" />
+                <path d="M8 8h8" />
+              </svg>
+            </div>
+            <h3>请先绑定微信窗口</h3>
+            <ol className="automation-warning-list">
+              <li>{bindingPromptMessage}</li>
+              <li>绑定完成后，再返回当前任务卡开始任务即可。</li>
+            </ol>
+            <div className="automation-warning-actions">
+              <button className="automation-secondary-btn" type="button" onClick={handleCloseBindingPrompt}>
+                取消
+              </button>
+              <button className="automation-primary-btn" type="button" onClick={handleGoBindWechat}>
+                去绑定
               </button>
             </div>
           </div>

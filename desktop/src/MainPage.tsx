@@ -178,9 +178,10 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
           <div className="tutorial-hero">
             <div>
               <h2 className="tutorial-heading">用户教程</h2>
-              <p className="tutorial-intro">按照下面 3 步完成任务配置。运行自动化前请先确认微信主窗口已打开，避免任务启动后找不到目标窗口。</p>
+              <p className="tutorial-intro">按照下面 4 步完成任务配置。运行自动化前请先确认微信主窗口已打开，避免任务启动后找不到目标窗口。</p>
             </div>
             <div className="tutorial-flow">
+              <span>绑定窗口</span>
               <span>设置限额</span>
               <span>选择招呼语</span>
               <span>开始任务</span>
@@ -191,6 +192,18 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
             <article className="tutorial-step-card">
               <div className="tutorial-step-copy">
                 <span className="tutorial-step-num">01</span>
+                <h3>先绑定微信窗口</h3>
+                <p>进入“我的”页面后，先点击“刷新窗口”，再从下拉框里选择当前已经打开的微信主窗口，最后点击“绑定”完成关联。</p>
+                <div className="tutorial-tip">每个任务卡都会固定使用对应的微信窗口。微信 1、微信 2、微信 3 建议分别绑定不同的微信主窗口，避免启动任务时找错窗口。</div>
+              </div>
+              <div className="tutorial-image-frame">
+                <img src="/tutorial/wechat-binding.png" alt="绑定微信窗口" />
+              </div>
+            </article>
+
+            <article className="tutorial-step-card">
+              <div className="tutorial-step-copy">
+                <span className="tutorial-step-num">02</span>
                 <h3>设置每日微信加人人数</h3>
                 <p>在“每日限额”里填写当天希望自动添加的人数。建议先小数量测试，确认微信账号状态稳定后再逐步调整。</p>
                 <div className="tutorial-limit-guide">
@@ -215,7 +228,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
 
             <article className="tutorial-step-card">
               <div className="tutorial-step-copy">
-                <span className="tutorial-step-num">02</span>
+                <span className="tutorial-step-num">03</span>
                 <h3>设置默认打招呼语</h3>
                 <p>可以手动输入招呼语，也可以点击下方 3 条默认话术快速填入。选中后仍然可以继续修改文字。</p>
                 <div className="tutorial-tip">建议使用自然、简短、不夸张的文案，减少被微信风控识别的风险。</div>
@@ -227,7 +240,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
 
             <article className="tutorial-step-card">
               <div className="tutorial-step-copy">
-                <span className="tutorial-step-num">03</span>
+                <span className="tutorial-step-num">04</span>
                 <h3>开始执行加人程序</h3>
                 <p>点击“开始任务”后会弹出自动化提示。确认后有 5 秒时间切换到微信，之后程序会接管鼠标和键盘。</p>
                 <div className="tutorial-tip">运行期间请勿操作浏览器、微信或鼠标，等待任务完成或手动停止。</div>
@@ -306,6 +319,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               onStatusChange={fetchStatus}
               onOpenTutorial={() => setActiveNav("用户教程")}
               onOpenPayment={() => setShowPayment(true)}
+              onOpenProfile={() => setActiveNav("我的")}
             />
           ))}
         </div>
