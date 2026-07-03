@@ -6,11 +6,10 @@ import ProfilePage from "./ProfilePage";
 import TaskCard from "./TaskCard";
 import OfflineBanner from "./OfflineBanner";
 import { useNetworkStatus } from "./useNetworkStatus";
+import { normalizeTaskDefaults } from "./localSettings";
 import {
-  ADD_INTERVAL_MINUTE_OPTIONS,
   DEFAULT_TASK_DEFAULTS,
   TASK_DEFAULTS_STORAGE_KEY,
-  type AddIntervalMinutes,
   type TaskDefaults,
   type UserStatus,
 } from "./types";
@@ -54,28 +53,6 @@ const HERO_SLIDES = [
     cta: "开始使用",
   },
 ];
-
-function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
-  const addIntervalMinutes = Number(defaults?.addIntervalMinutes);
-  const rawGreetingPresets = defaults?.greetingPresets;
-  const greetingPresets = Array.isArray(rawGreetingPresets)
-    ? DEFAULT_TASK_DEFAULTS.greetingPresets.map((fallback, index) => {
-        const preset = rawGreetingPresets[index];
-        return typeof preset === "string" ? preset.trim() : fallback;
-      })
-    : DEFAULT_TASK_DEFAULTS.greetingPresets;
-
-  return {
-    targetType: "contact",
-    dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
-    addIntervalMinutes: ADD_INTERVAL_MINUTE_OPTIONS.includes(addIntervalMinutes as AddIntervalMinutes)
-      ? addIntervalMinutes as AddIntervalMinutes
-      : DEFAULT_TASK_DEFAULTS.addIntervalMinutes,
-    createTag: false,
-    greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,
-    greetingPresets,
-  };
-}
 
 function loadTaskDefaults(): TaskDefaults {
   try {
@@ -219,15 +196,15 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
                 <div className="tutorial-limit-guide">
                   <div className="tutorial-limit-row">
                     <strong>新号（注册 0–3 个月，未养好）</strong>
-                    <span>单日建议 <b>3–5 人</b>；每小时最多加 <b>2 人</b>；单次间隔 <b>≥ 50 分钟</b>。</span>
+                    <span>选择“新号”后自动配置每日限额 <b>5 人</b>，适合先小量稳定测试。</span>
                   </div>
                   <div className="tutorial-limit-row">
                     <strong>中期号（3 个月–1 年，实名绑卡）</strong>
-                    <span>单日建议 <b>≤ 10 人</b>；每小时不要超过 <b>5 次申请</b>。</span>
+                    <span>选择“中期号”后自动配置每日限额 <b>15 人</b>，适合稳定运行的账号。</span>
                   </div>
                   <div className="tutorial-limit-row">
                     <strong>老号（1 年以上、高活跃、无违规）</strong>
-                    <span>单日建议 <b>≤ 20 人</b>；避免连续快速添加。</span>
+                    <span>选择“老号”后自动配置每日限额 <b>30 人</b>，适合长期稳定的账号。</span>
                   </div>
                 </div>
               </div>

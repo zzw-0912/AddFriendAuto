@@ -1,5 +1,3 @@
-import math
-import random
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -23,14 +21,6 @@ from app.schemas.task import ClaimTargetsResponse, StartCheckResponse, TaskRespo
 STALE_RUNNING_TASK_HOURS = 12
 VALID_TARGET_TYPES = {"contact", "phone", "wechat_id"}
 TRIAL_CHARGE_EVENTS = {"success"}
-
-
-def random_claim_limit(daily_limit: int | None) -> int:
-    max_limit = max(1, int(daily_limit or 1))
-    if max_limit <= 3:
-        return random.randint(1, max_limit)
-    min_limit = math.ceil(max_limit * 0.7)
-    return random.randint(min_limit, max_limit)
 
 
 def random_order_expression(db: Session):
@@ -144,6 +134,10 @@ def trial_claim_limit(daily_limit: int | None, remaining: int) -> int:
     requested = max(1, int(daily_limit or 1))
     available = max(0, int(remaining or 0))
     return min(requested, available)
+
+
+def member_claim_limit(daily_limit: int | None) -> int:
+    return max(1, int(daily_limit or 1))
 
 
 def finish_stale_running_tasks(user_id: int, slot_id: int, db: Session) -> bool:
@@ -304,7 +298,7 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
         )
 
     limit = (
-        random_claim_limit(task.daily_limit)
+        member_claim_limit(task.daily_limit)
         if membership_info.is_active
         else trial_claim_limit(task.daily_limit, trial_info.remaining)
     )

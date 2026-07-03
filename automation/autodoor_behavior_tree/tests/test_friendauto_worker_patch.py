@@ -93,6 +93,21 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
             self.assertEqual(config.get("x_float"), 0, node_id)
             self.assertEqual(config.get("y_float"), 0, node_id)
 
+    def test_account_age_profile_sets_random_repeat_interval(self):
+        temp_dir, tree_file = self._copy_tree()
+        self.addCleanup(temp_dir.cleanup)
+
+        task_config = self._task_config()
+        task_config["account_age_profile"] = "old"
+        worker.patch_tree(tree_file, task_config)
+
+        with tree_file.open("r", encoding="utf-8") as f:
+            tree_data = json.load(f)
+
+        root_config = worker.get_config(tree_data["nodes"][tree_data["root_node"]])
+        self.assertEqual(root_config.get("repeat_interval_ms"), str(450 * 1000))
+        self.assertEqual(root_config.get("repeat_interval_ms_random"), str(150 * 1000))
+
     def test_patch_marks_missing_search_result_invalid_and_recovers_search_box(self):
         temp_dir, tree_file = self._copy_tree()
         self.addCleanup(temp_dir.cleanup)

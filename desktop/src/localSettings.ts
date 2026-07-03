@@ -1,9 +1,9 @@
 import {
-  ADD_INTERVAL_MINUTE_OPTIONS,
+  ACCOUNT_AGE_PROFILE_OPTIONS,
   DEFAULT_TASK_DEFAULTS,
   TASK_SLOT_CONFIGS_STORAGE_KEY,
   WECHAT_BINDINGS_STORAGE_KEY,
-  type AddIntervalMinutes,
+  type AccountAgeProfile,
   type TaskDefaults,
   type WeChatWindowBinding,
 } from "./types";
@@ -18,19 +18,53 @@ function normalizeGreetingPresets(value: unknown, fallback: TaskDefaults["greeti
   });
 }
 
-function normalizeAddIntervalMinutes(value: unknown, fallback: AddIntervalMinutes): AddIntervalMinutes {
-  const minutes = Number(value);
-  if (ADD_INTERVAL_MINUTE_OPTIONS.includes(minutes as AddIntervalMinutes)) {
-    return minutes as AddIntervalMinutes;
-  }
+function isAccountAgeProfile(value: unknown): value is AccountAgeProfile {
+  return ACCOUNT_AGE_PROFILE_OPTIONS.some((option) => option.value === value);
+}
+
+function normalizeAccountAgeProfile(
+  value: unknown,
+  fallback: AccountAgeProfile,
+  legacyMinutes?: unknown,
+): AccountAgeProfile {
+  if (isAccountAgeProfile(value)) return value;
+
+  const minutes = Number(legacyMinutes);
+  if (minutes === 20) return "new";
+  if (minutes === 10) return "mid";
+  if (minutes === 5) return "old";
   return fallback;
 }
 
+function profileDailyLimit(profile: AccountAgeProfile): number {
+  return ACCOUNT_AGE_PROFILE_OPTIONS.find((option) => option.value === profile)?.dailyLimit ?? DEFAULT_TASK_DEFAULTS.dailyLimit;
+}
+
+type LegacyTaskDefaults = Partial<TaskDefaults> & {
+  addIntervalMinutes?: unknown;
+  add_interval_minutes?: unknown;
+  account_age_profile?: unknown;
+};
+
+function normalizeDailyLimit(defaults: LegacyTaskDefaults | null | undefined, profile: AccountAgeProfile): number {
+  if (defaults?.accountAgeProfile === undefined && defaults?.account_age_profile === undefined) {
+    return profileDailyLimit(profile);
+  }
+  return Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || profileDailyLimit(profile)));
+}
+
 export function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null | undefined, fallback = DEFAULT_TASK_DEFAULTS): TaskDefaults {
+  const legacyDefaults = defaults as LegacyTaskDefaults | null | undefined;
+  const accountAgeProfile = normalizeAccountAgeProfile(
+    legacyDefaults?.accountAgeProfile ?? legacyDefaults?.account_age_profile,
+    fallback.accountAgeProfile,
+    legacyDefaults?.addIntervalMinutes ?? legacyDefaults?.add_interval_minutes,
+  );
+
   return {
     targetType: "contact",
-    dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || fallback.dailyLimit)),
-    addIntervalMinutes: normalizeAddIntervalMinutes(defaults?.addIntervalMinutes, fallback.addIntervalMinutes),
+    dailyLimit: normalizeDailyLimit(legacyDefaults, accountAgeProfile),
+    accountAgeProfile,
     createTag: false,
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : fallback.greetingText,
     greetingPresets: normalizeGreetingPresets(defaults?.greetingPresets, fallback.greetingPresets),

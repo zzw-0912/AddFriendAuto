@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  ADD_INTERVAL_MINUTE_OPTIONS,
+  ACCOUNT_AGE_PROFILE_OPTIONS,
   DEFAULT_TASK_DEFAULTS,
-  type AddIntervalMinutes,
+  type AccountAgeProfile,
   type AutoDoorConfig,
   type TaskDefaults,
   type UserStatus,
@@ -44,7 +44,9 @@ interface SettingsPageProps {
 }
 
 function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
-  const addIntervalMinutes = Number(defaults.addIntervalMinutes);
+  const accountAgeProfile = ACCOUNT_AGE_PROFILE_OPTIONS.some((option) => option.value === defaults.accountAgeProfile)
+    ? defaults.accountAgeProfile as AccountAgeProfile
+    : DEFAULT_TASK_DEFAULTS.accountAgeProfile;
   const greetingPresets = DEFAULT_TASK_DEFAULTS.greetingPresets.map((fallback, index) => {
     const preset = defaults.greetingPresets?.[index];
     return typeof preset === "string" ? preset.trim() : fallback;
@@ -53,9 +55,7 @@ function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
   return {
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
-    addIntervalMinutes: ADD_INTERVAL_MINUTE_OPTIONS.includes(addIntervalMinutes as AddIntervalMinutes)
-      ? addIntervalMinutes as AddIntervalMinutes
-      : DEFAULT_TASK_DEFAULTS.addIntervalMinutes,
+    accountAgeProfile,
     createTag: false,
     greetingText: defaults.greetingText.trim(),
     greetingPresets,
@@ -358,14 +358,18 @@ function SettingsPage({
             <div className="field">
               <label>加人间隔</label>
               <div className="add-interval-options" role="radiogroup" aria-label="默认加人间隔">
-                {ADD_INTERVAL_MINUTE_OPTIONS.map((minutes) => (
+                {ACCOUNT_AGE_PROFILE_OPTIONS.map((option) => (
                   <button
-                    key={minutes}
+                    key={option.value}
                     type="button"
-                    className={`add-interval-option${defaultsForm.addIntervalMinutes === minutes ? " active" : ""}`}
-                    onClick={() => setDefaultsForm((prev) => ({ ...prev, addIntervalMinutes: minutes }))}
+                    className={`add-interval-option${defaultsForm.accountAgeProfile === option.value ? " active" : ""}`}
+                    onClick={() => setDefaultsForm((prev) => ({
+                      ...prev,
+                      accountAgeProfile: option.value,
+                      dailyLimit: option.dailyLimit,
+                    }))}
                   >
-                    {minutes}分钟
+                    {option.label}
                   </button>
                 ))}
               </div>

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNetworkStatus } from "./useNetworkStatus";
 import { loadTaskSlotConfig, loadWeChatBindings, saveTaskSlotConfig } from "./localSettings";
-import { ADD_INTERVAL_MINUTE_OPTIONS, type TargetType, type TaskDefaults, type UserStatus } from "./types";
+import { ACCOUNT_AGE_PROFILE_OPTIONS, type AccountAgeProfile, type TargetType, type TaskDefaults, type UserStatus } from "./types";
 
 interface Props {
   apiBase: string;
@@ -123,7 +123,7 @@ function TaskPanel({
   const { isOnline } = useNetworkStatus();
   const [targetType, setTargetType] = useState<TargetType>(() => loadTaskSlotConfig(slotId, taskDefaults).targetType);
   const [dailyLimit, setDailyLimit] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).dailyLimit);
-  const [addIntervalMinutes, setAddIntervalMinutes] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).addIntervalMinutes);
+  const [accountAgeProfile, setAccountAgeProfile] = useState<AccountAgeProfile>(() => loadTaskSlotConfig(slotId, taskDefaults).accountAgeProfile);
   const [greetingText, setGreetingText] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingText);
   const [greetingPresets, setGreetingPresets] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingPresets);
   const [isRunning, setIsRunning] = useState(false);
@@ -328,7 +328,7 @@ function TaskPanel({
     const slotConfig = loadTaskSlotConfig(slotId, taskDefaults);
     setTargetType(slotConfig.targetType);
     setDailyLimit(slotConfig.dailyLimit);
-    setAddIntervalMinutes(slotConfig.addIntervalMinutes);
+    setAccountAgeProfile(slotConfig.accountAgeProfile);
     setGreetingText(slotConfig.greetingText);
     setGreetingPresets(slotConfig.greetingPresets);
   }, [isRunning, slotId, taskDefaults, taskDefaultsVersion]);
@@ -356,8 +356,14 @@ function TaskPanel({
     setGreetingPresets((prev) => prev.map((preset, i) => (i === index ? value : preset)));
   };
 
+  const handleAccountAgeProfileChange = (profile: AccountAgeProfile) => {
+    const option = ACCOUNT_AGE_PROFILE_OPTIONS.find((item) => item.value === profile);
+    setAccountAgeProfile(profile);
+    if (option) setDailyLimit(option.dailyLimit);
+  };
+
   const handleSaveConfig = () => {
-    const nextConfig = { targetType, dailyLimit, addIntervalMinutes, createTag: false, greetingText, greetingPresets };
+    const nextConfig = { targetType, dailyLimit, accountAgeProfile, createTag: false, greetingText, greetingPresets };
     saveTaskSlotConfig(slotId, nextConfig);
     addUniqueLog("任务配置已保存", "success");
   };
@@ -443,13 +449,23 @@ function TaskPanel({
         return;
       }
 
+      const preparedCount = claimData.targets.length;
+      addUniqueLog(`本次准备 ${preparedCount} 条好友名单`, "info");
+      if (preparedCount < dailyLimit) {
+        const claimAccess = asAccessSnapshot(claimData) ?? access;
+        const reason = claimAccess?.membership?.is_active
+          ? "线上可用好友名单少于每日限额，本次按实际名单执行"
+          : "免费次数或线上名单少于每日限额，本次按实际名单执行";
+        addUniqueLog(reason, "info");
+      }
+
       const config = {
         run_id: String(data.task_id),
         task_id: data.task_id,
         slot_id: slotId,
         target_type: claimData.target_type,
         daily_limit: dailyLimit,
-        add_interval_minutes: addIntervalMinutes,
+        account_age_profile: accountAgeProfile,
         create_tag: false,
         greeting_text: greetingText,
         wechat_binding: wechatBinding,
@@ -542,15 +558,15 @@ function TaskPanel({
             <div className="field add-interval-field">
               <label>加人间隔</label>
               <div className="add-interval-options" role="radiogroup" aria-label="加人间隔">
-                {ADD_INTERVAL_MINUTE_OPTIONS.map((minutes) => (
+                {ACCOUNT_AGE_PROFILE_OPTIONS.map((option) => (
                   <button
-                    key={minutes}
+                    key={option.value}
                     type="button"
-                    className={`add-interval-option${addIntervalMinutes === minutes ? " active" : ""}`}
+                    className={`add-interval-option${accountAgeProfile === option.value ? " active" : ""}`}
                     disabled={isRunning}
-                    onClick={() => setAddIntervalMinutes(minutes)}
+                    onClick={() => handleAccountAgeProfileChange(option.value)}
                   >
-                    {minutes}分钟
+                    {option.label}
                   </button>
                 ))}
               </div>

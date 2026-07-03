@@ -50,8 +50,12 @@ BOOTSTRAP_RETRY_MAX_SECONDS = 8.0
 BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
 AUTOMATION_LOCK_FILE_NAME = "automation.lock"
 CLIPBOARD_LOCK_FILE_NAME = "clipboard.lock"
-ADD_INTERVAL_MINUTE_OPTIONS = {5, 10, 20}
-DEFAULT_ADD_INTERVAL_MINUTES = 5
+ACCOUNT_AGE_INTERVALS_MS = {
+    "new": (25 * 60 * 1000, 5 * 60 * 1000),
+    "mid": (1050 * 1000, 150 * 1000),
+    "old": (450 * 1000, 150 * 1000),
+}
+DEFAULT_ACCOUNT_AGE_PROFILE = "new"
 
 
 @dataclass
@@ -540,15 +544,20 @@ def parse_wechat_binding(task_config: dict[str, Any]) -> dict[str, Any] | None:
     return {"hwnd": hwnd, "pid": pid, "title": title, "display_name": display_name}
 
 
-def parse_add_interval_ms(task_config: dict[str, Any]) -> int:
+def parse_add_interval_config(task_config: dict[str, Any]) -> tuple[int, int]:
+    raw_profile = task_config.get("account_age_profile", task_config.get("accountAgeProfile"))
+    profile = str(raw_profile or DEFAULT_ACCOUNT_AGE_PROFILE).strip()
+    if profile in ACCOUNT_AGE_INTERVALS_MS:
+        return ACCOUNT_AGE_INTERVALS_MS[profile]
+
     raw = task_config.get("add_interval_minutes", task_config.get("addIntervalMinutes"))
     try:
         minutes = int(raw)
     except (TypeError, ValueError):
-        minutes = DEFAULT_ADD_INTERVAL_MINUTES
-    if minutes not in ADD_INTERVAL_MINUTE_OPTIONS:
-        minutes = DEFAULT_ADD_INTERVAL_MINUTES
-    return minutes * 60 * 1000
+        minutes = 0
+    if minutes > 0:
+        return minutes * 60 * 1000, 0
+    return ACCOUNT_AGE_INTERVALS_MS[DEFAULT_ACCOUNT_AGE_PROFILE]
 
 
 def apply_wechat_binding(nodes: dict[str, dict[str, Any]], node_ids: list[str], binding: dict[str, Any]) -> int:
@@ -869,7 +878,9 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
     if root_id in nodes:
         root_config = get_config(nodes[root_id])
         root_config["repeat_count"] = max(0, len(phone_numbers) - 1)
-        root_config["repeat_interval_ms"] = str(parse_add_interval_ms(task_config))
+        repeat_interval_ms, repeat_interval_ms_random = parse_add_interval_config(task_config)
+        root_config["repeat_interval_ms"] = str(repeat_interval_ms)
+        root_config["repeat_interval_ms_random"] = str(repeat_interval_ms_random)
 
     greeting_ids = patch_greeting(tree_data, active_ids, str(task_config.get("greeting_text") or "").strip())
     if not bool(task_config.get("create_tag")):
