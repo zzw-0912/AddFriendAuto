@@ -20,6 +20,9 @@ from app.models.email_code import EmailCode
 from app.models.user import User
 
 
+REFERRAL_BONUS_COUNT = 20
+
+
 async def send_code(email: str, db: Session) -> dict:
     recent = (
         db.query(EmailCode)
@@ -95,6 +98,30 @@ def _create_trial_quota(user_id: int, db: Session):
         db.add(quota)
 
 
+def _normalize_referral_code(referral_code: str | None) -> str:
+    return (referral_code or "").strip().upper()
+
+
+def _add_referral_trial_bonus(user_id: int, bonus_count: int, db: Session):
+    from app.models.trial_quota import TrialQuota
+
+    quota = db.query(TrialQuota).filter(TrialQuota.user_id == user_id).with_for_update().first()
+    if quota:
+        quota.total_count = int(quota.total_count or 0) + bonus_count
+        quota.remaining_count = int(quota.remaining_count or 0) + bonus_count
+        return
+
+    db.add(
+        TrialQuota(
+            user_id=user_id,
+            device_id=0,
+            total_count=bonus_count,
+            used_count=0,
+            remaining_count=bonus_count,
+        )
+    )
+
+
 def _generate_referral_code(db: Session) -> str:
     chars = string.ascii_uppercase + string.digits
     for _ in range(100):
@@ -159,7 +186,14 @@ def login(email: str, password: str, machine_code: str, db: Session) -> dict:
     return result
 
 
-def register(email: str, password: str, code: str, machine_code: str, db: Session) -> dict:
+def register(
+    email: str,
+    password: str,
+    code: str,
+    machine_code: str,
+    db: Session,
+    referral_code: str | None = None,
+) -> dict:
     # Verify code
     valid = False
     if settings.debug and email == "test@friendauto.com" and code == "888888":
@@ -189,12 +223,29 @@ def register(email: str, password: str, code: str, machine_code: str, db: Sessio
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
+    normalized_referral_code = _normalize_referral_code(referral_code)
+    referrer = None
+    if normalized_referral_code:
+        referrer = (
+            db.query(User)
+            .filter(User.referral_code == normalized_referral_code)
+            .with_for_update()
+            .first()
+        )
+        if not referrer:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邀请码不存在，请检查后重试",
+            )
+
     user = User(email=email, password_hash=hash_password(password), referral_code=_generate_referral_code(db))
     db.add(user)
     db.flush()
 
     _create_trial_quota(user.id, db)
     _bind_device(user.id, machine_code, db)
+    if referrer:
+        _add_referral_trial_bonus(referrer.id, REFERRAL_BONUS_COUNT, db)
 
     user.last_login_at = datetime.now(timezone.utc)
     try:

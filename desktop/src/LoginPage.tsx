@@ -162,6 +162,7 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
   const { countdown, send } = useSendCode(apiBase, showToast);
@@ -176,11 +177,18 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
     if (code.length < 6) { showToast("请输入 6 位验证码"); return; }
     if (!agree) { showToast("请先阅读并同意用户协议和隐私政策"); return; }
 
+    const normalizedReferralCode = referralCode.trim().toUpperCase();
     setLoading(true);
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail, password, code, machine_code: machineCode }),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+          code,
+          machine_code: machineCode,
+          referral_code: normalizedReferralCode || null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.detail || "注册失败"); return; }
@@ -221,6 +229,19 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
         <button type="button" className="btn-send" style={{ marginTop: 26 }} disabled={countdown > 0} onClick={() => send(email)}>
           {countdown > 0 ? `${countdown}s 后重发` : "发送验证码"}
         </button>
+      </div>
+
+      <div className="field">
+        <label>邀请码（可选）</label>
+        <input
+          className="input"
+          type="text"
+          placeholder="填写好友推荐码"
+          maxLength={16}
+          value={referralCode}
+          onChange={(e) => setReferralCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))}
+          autoComplete="off"
+        />
       </div>
 
       <div className="check-row">

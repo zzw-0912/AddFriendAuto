@@ -27,7 +27,7 @@ def login_or_register(req: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/register", response_model=TokenResponse)
 def register_account(req: RegisterRequest, db: Session = Depends(get_db)):
-    return register(req.email, req.password, req.code, req.machine_code, db)
+    return register(req.email, req.password, req.code, req.machine_code, db, req.referral_code)
 
 
 @router.post("/reset-password")
