@@ -342,7 +342,7 @@ function SettingsPage({
       <section className="profile-card settings-card">
         <h4 className="profile-card-title">任务默认设置</h4>
         <p className="profile-card-desc">保存后会同步到未运行的任务卡</p>
-        <form className="settings-form" onSubmit={handleDefaultsSubmit}>
+        <form className="settings-form" onSubmit={handleDefaultsSubmit} noValidate>
           <div className="settings-form-grid">
             <div className="field">
               <label>每日限额</label>
@@ -399,7 +399,7 @@ function SettingsPage({
       <section className="profile-card settings-card">
         <h4 className="profile-card-title">自动化平台设置</h4>
         <p className="profile-card-desc">配置本机 AutoDoor 源码、加好友项目和调试编辑器路径</p>
-        <form className="settings-form" onSubmit={handleAutoDoorConfigSubmit}>
+        <form className="settings-form" onSubmit={handleAutoDoorConfigSubmit} noValidate>
           <div className="settings-path-grid">
             <div className="field">
               <label>AutoDoor 源码目录</label>
@@ -446,7 +446,7 @@ function SettingsPage({
       <section className="profile-card settings-card">
         <h4 className="profile-card-title">修改密码</h4>
         <p className="profile-card-desc">通过当前登录邮箱验证后修改密码</p>
-        <form className="settings-form" onSubmit={handlePasswordReset}>
+        <form className="settings-form" onSubmit={handlePasswordReset} noValidate>
           <div className="field">
             <label>邮箱地址</label>
             <input className="input" type="email" value={email} disabled />

@@ -63,7 +63,7 @@ function App() {
   };
 
   if (loading) {
-    return <div className="container"><p>Loading...</p></div>;
+    return <div className="container"><p>加载中...</p></div>;
   }
 
   if (!auth) {

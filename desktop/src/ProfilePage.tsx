@@ -479,7 +479,7 @@ function ProfilePage({
       <div className="profile-card settings-card">
         <h4 className="profile-card-title">修改密码</h4>
         <p className="profile-card-desc">通过当前登录邮箱验证后修改密码</p>
-        <form className="settings-form" onSubmit={handlePasswordReset}>
+        <form className="settings-form" onSubmit={handlePasswordReset} noValidate>
           <div className="field">
             <label>邮箱地址</label>
             <input className="input" type="email" value={email} disabled />

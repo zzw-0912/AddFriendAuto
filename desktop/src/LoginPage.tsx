@@ -125,18 +125,18 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
   };
 
   return (
-    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
+    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off" noValidate>
       <h2>欢迎回来</h2>
       <p className="form-sub">输入邮箱和密码登录</p>
 
       <div className="field">
         <label>邮箱地址</label>
-        <input className="input" type="email" placeholder="your@qq.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="请输入 QQ 邮箱" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
 
       <div className="field">
         <label>密码</label>
-        <input className="input" type="password" placeholder="输入密码" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="输入密码" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
 
       <div className="check-row">
@@ -194,23 +194,23 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   };
 
   return (
-    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
+    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off" noValidate>
       <h2>创建账号</h2>
       <p className="form-sub">使用邮箱注册，设置密码后即可开始使用</p>
 
       <div className="field">
         <label>邮箱地址</label>
-        <input className="input" type="email" placeholder="your@qq.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="请输入 QQ 邮箱" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
 
       <div className="field">
         <label>设置密码</label>
-        <input className="input" type="password" placeholder="至少 6 位字符" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="至少 6 位字符" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
 
       <div className="field">
         <label>确认密码</label>
-        <input className="input" type="password" placeholder="再次输入密码" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+        <input className="input" type="password" placeholder="再次输入密码" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </div>
 
       <div className="code-row">
@@ -276,13 +276,13 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
   };
 
   return (
-    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
+    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off" noValidate>
       <h2>找回密码</h2>
       <p className="form-sub">通过邮箱验证后重置密码</p>
 
       <div className="field">
         <label>注册邮箱</label>
-        <input className="input" type="email" placeholder="your@qq.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="请输入 QQ 邮箱" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
 
       <div className="code-row">
@@ -297,12 +297,12 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
 
       <div className="field">
         <label>设置密码</label>
-        <input className="input" type="password" placeholder="至少 6 位字符" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="至少 6 位字符" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
       </div>
 
       <div className="field">
         <label>确认密码</label>
-        <input className="input" type="password" placeholder="再次输入密码" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="再次输入密码" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
       </div>
 
       <button type="submit" className="btn-primary" disabled={loading}>

@@ -68,6 +68,7 @@ let logId = 0;
 const BOOT_STEPS = [
   "AI模型正在思考中",
   "AI模型正在搜索中",
+  "AI模型正在整合信息中",
 ];
 
 const START_DELAY_SECONDS = 5;
@@ -131,6 +132,7 @@ function TaskPanel({
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [bootDone, setBootDone] = useState(false);
+  const [toast, setToast] = useState("");
   const [showAutomationPrompt, setShowAutomationPrompt] = useState(false);
   const [startCountdown, setStartCountdown] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -141,6 +143,13 @@ function TaskPanel({
   const lastTrialRemainingRef = useRef<number | null>(null);
   const startDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(""), 2200);
+  };
 
   const addLog = useCallback((text: string, type: LogEntry["type"] = "info") => {
     logId += 1;
@@ -337,6 +346,7 @@ function TaskPanel({
     return () => {
       if (startDelayTimerRef.current) clearTimeout(startDelayTimerRef.current);
       if (startCountdownTimerRef.current) clearInterval(startCountdownTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
 
@@ -366,6 +376,7 @@ function TaskPanel({
     const nextConfig = { targetType, dailyLimit, accountAgeProfile, createTag: false, greetingText, greetingPresets };
     saveTaskSlotConfig(slotId, nextConfig);
     addUniqueLog("任务配置已保存", "success");
+    showToast(`微信${slotId}配置已保存`);
   };
 
   const runStartTask = async () => {
@@ -528,6 +539,7 @@ function TaskPanel({
 
   return (
     <div className="task-panel">
+      {toast && <div className="toast show">{toast}</div>}
       {/* Config section */}
       <div className="section-card task-config-card">
         <div className="task-config-header">
@@ -636,7 +648,7 @@ function TaskPanel({
           {BOOT_STEPS.slice(0, visibleSteps).map((step, i) => (
             <div key={i} className="term-line term-status">
               <span className="term-arrow">▶</span> {step}...
-              <span className="term-ok">OK</span>
+              <span className="term-ok">完成</span>
             </div>
           ))}
           {!bootDone && visibleSteps < BOOT_STEPS.length && <span className="term-cursor">█</span>}
