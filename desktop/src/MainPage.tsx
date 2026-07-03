@@ -49,8 +49,8 @@ const HERO_SLIDES = [
     cta: "了解更多",
   },
   {
-    title: "智能标签分组",
-    desc: "自动为新增好友添加标签，分类管理更方便",
+    title: "任务进度清晰可见",
+    desc: "实时查看加好友进度，多个微信窗口独立运行",
     cta: "开始使用",
   },
 ];
@@ -71,7 +71,7 @@ function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefa
     addIntervalMinutes: ADD_INTERVAL_MINUTE_OPTIONS.includes(addIntervalMinutes as AddIntervalMinutes)
       ? addIntervalMinutes as AddIntervalMinutes
       : DEFAULT_TASK_DEFAULTS.addIntervalMinutes,
-    createTag: Boolean(defaults?.createTag),
+    createTag: false,
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,
     greetingPresets,
   };

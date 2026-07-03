@@ -15,9 +15,9 @@ from app.models.user import User
 
 
 DEFAULT_PLANS = [
-    {"name": "月卡", "duration_days": 30, "price_cents": 30000, "enabled": True},
-    {"name": "季卡", "duration_days": 90, "price_cents": 50000, "enabled": True},
-    {"name": "年卡", "duration_days": 365, "price_cents": 80000, "enabled": True},
+    {"id": 1, "name": "Plus", "duration_days": 30, "price_cents": 30000, "enabled": True},
+    {"id": 2, "name": "Pro 5x", "duration_days": 30, "price_cents": 50000, "enabled": True},
+    {"id": 3, "name": "Pro 20x", "duration_days": 30, "price_cents": 80000, "enabled": True},
 ]
 
 
@@ -106,10 +106,11 @@ def init_db():
         if users_missing:
             db.commit()
 
-        existing_plans = {plan.name: plan for plan in db.query(Plan).all()}
+        existing_plans_by_id = {plan.id: plan for plan in db.query(Plan).all()}
         for defaults in DEFAULT_PLANS:
-            plan = existing_plans.get(defaults["name"])
+            plan = existing_plans_by_id.get(defaults["id"])
             if plan:
+                plan.name = defaults["name"]
                 plan.duration_days = defaults["duration_days"]
                 plan.price_cents = defaults["price_cents"]
                 plan.enabled = defaults["enabled"]

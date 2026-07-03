@@ -124,7 +124,6 @@ function TaskPanel({
   const [targetType, setTargetType] = useState<TargetType>(() => loadTaskSlotConfig(slotId, taskDefaults).targetType);
   const [dailyLimit, setDailyLimit] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).dailyLimit);
   const [addIntervalMinutes, setAddIntervalMinutes] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).addIntervalMinutes);
-  const [createTag, setCreateTag] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).createTag);
   const [greetingText, setGreetingText] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingText);
   const [greetingPresets, setGreetingPresets] = useState(() => loadTaskSlotConfig(slotId, taskDefaults).greetingPresets);
   const [isRunning, setIsRunning] = useState(false);
@@ -330,7 +329,6 @@ function TaskPanel({
     setTargetType(slotConfig.targetType);
     setDailyLimit(slotConfig.dailyLimit);
     setAddIntervalMinutes(slotConfig.addIntervalMinutes);
-    setCreateTag(slotConfig.createTag);
     setGreetingText(slotConfig.greetingText);
     setGreetingPresets(slotConfig.greetingPresets);
   }, [isRunning, slotId, taskDefaults, taskDefaultsVersion]);
@@ -359,7 +357,7 @@ function TaskPanel({
   };
 
   const handleSaveConfig = () => {
-    const nextConfig = { targetType, dailyLimit, addIntervalMinutes, createTag, greetingText, greetingPresets };
+    const nextConfig = { targetType, dailyLimit, addIntervalMinutes, createTag: false, greetingText, greetingPresets };
     saveTaskSlotConfig(slotId, nextConfig);
     addUniqueLog("任务配置已保存", "success");
   };
@@ -397,7 +395,7 @@ function TaskPanel({
           slot_id: slotId,
           target_type: targetType,
           daily_limit: dailyLimit,
-          create_tag: createTag,
+          create_tag: false,
           greeting_text: greetingText || null,
         }),
       });
@@ -452,7 +450,7 @@ function TaskPanel({
         target_type: claimData.target_type,
         daily_limit: dailyLimit,
         add_interval_minutes: addIntervalMinutes,
-        create_tag: createTag,
+        create_tag: false,
         greeting_text: greetingText,
         wechat_binding: wechatBinding,
         targets: claimData.targets,

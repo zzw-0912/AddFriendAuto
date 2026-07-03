@@ -56,7 +56,7 @@ function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
     addIntervalMinutes: ADD_INTERVAL_MINUTE_OPTIONS.includes(addIntervalMinutes as AddIntervalMinutes)
       ? addIntervalMinutes as AddIntervalMinutes
       : DEFAULT_TASK_DEFAULTS.addIntervalMinutes,
-    createTag: Boolean(defaults.createTag),
+    createTag: false,
     greetingText: defaults.greetingText.trim(),
     greetingPresets,
   };
@@ -370,14 +370,6 @@ function SettingsPage({
                 ))}
               </div>
             </div>
-            <label className="settings-check-row">
-              <input
-                type="checkbox"
-                checked={defaultsForm.createTag}
-                onChange={(e) => setDefaultsForm((prev) => ({ ...prev, createTag: e.target.checked }))}
-              />
-              创建标签
-            </label>
           </div>
           <div className="field">
             <label>打招呼语（可选）</label>

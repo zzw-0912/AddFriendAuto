@@ -22,7 +22,7 @@ from app.schemas.task import ClaimTargetsResponse, StartCheckResponse, TaskRespo
 
 STALE_RUNNING_TASK_HOURS = 12
 VALID_TARGET_TYPES = {"contact", "phone", "wechat_id"}
-TRIAL_CHARGE_EVENTS = {"success", "failed", "invalid"}
+TRIAL_CHARGE_EVENTS = {"success"}
 
 
 def random_claim_limit(daily_limit: int | None) -> int:

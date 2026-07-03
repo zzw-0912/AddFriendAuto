@@ -141,6 +141,34 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
         ]
         self.assertGreater(len(add_friend_start_ids), 0)
 
+    def test_success_is_reported_after_closing_add_friend_window(self):
+        temp_dir, tree_file = self._copy_tree()
+        self.addCleanup(temp_dir.cleanup)
+
+        patched = worker.patch_tree(tree_file, self._task_config())
+
+        with tree_file.open("r", encoding="utf-8") as f:
+            tree_data = json.load(f)
+
+        nodes = tree_data["nodes"]
+        parents = worker.parent_map(nodes)
+        confirm_click_ids = set(patched["confirm_click_ids"])
+        success_close_ids = set(patched["success_close_ids"])
+        self.assertGreater(len(confirm_click_ids), 0)
+        self.assertGreater(len(success_close_ids), 0)
+        self.assertTrue(confirm_click_ids.isdisjoint(success_close_ids))
+
+        for node_id in confirm_click_ids:
+            node = nodes[node_id]
+            self.assertEqual(worker.node_type(node), "MouseClickNode")
+            self.assertTrue(worker.contains_any(worker.node_name(node), worker.CONFIRM_CLICK_KEYWORDS))
+
+        for node_id in success_close_ids:
+            node = nodes[node_id]
+            self.assertEqual(worker.node_type(node), "MouseClickNode")
+            self.assertTrue(worker.contains_any(worker.node_name(node), worker.CLOSE_FRIEND_WINDOW_KEYWORDS))
+            self.assertIsNotNone(worker.nearest_start_ancestor(nodes, parents, node_id, ["添加朋友"]))
+
     def test_patch_requires_bound_wechat_window(self):
         temp_dir, tree_file = self._copy_tree()
         self.addCleanup(temp_dir.cleanup)

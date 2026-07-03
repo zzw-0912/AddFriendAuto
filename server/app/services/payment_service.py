@@ -75,7 +75,8 @@ def process_order_payment(order: Order, channel: str, db: Session) -> dict:
             Membership.status == "active",
         ).update({"status": "expired"}, synchronize_session=False)
 
-    ends_at = starts_at + timedelta(days=plan.duration_days)
+    duration_days = 30 if order.plan_id in {1, 2, 3} else plan.duration_days
+    ends_at = starts_at + timedelta(days=duration_days)
     membership = Membership(
         user_id=order.user_id,
         plan_id=order.plan_id,

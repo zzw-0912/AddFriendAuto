@@ -10,7 +10,7 @@ router = APIRouter(prefix="/plans", tags=["plans"])
 
 @router.get("", response_model=list[PlanResponse])
 def list_plans(db: Session = Depends(get_db)):
-    plans = db.query(Plan).filter(Plan.enabled == True).all()
+    plans = db.query(Plan).filter(Plan.enabled == True).order_by(Plan.id).all()
     return [
         PlanResponse(
             id=p.id,

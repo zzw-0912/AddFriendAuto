@@ -31,7 +31,7 @@ export function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null | u
     targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || fallback.dailyLimit)),
     addIntervalMinutes: normalizeAddIntervalMinutes(defaults?.addIntervalMinutes, fallback.addIntervalMinutes),
-    createTag: Boolean(defaults?.createTag),
+    createTag: false,
     greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : fallback.greetingText,
     greetingPresets: normalizeGreetingPresets(defaults?.greetingPresets, fallback.greetingPresets),
   };

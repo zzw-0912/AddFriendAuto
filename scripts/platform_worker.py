@@ -41,6 +41,7 @@ CONFIRM_CLICK_KEYWORDS = ["点击确定", "确定"]
 KEY_FAILURE_KEYWORDS = ["发送添加好友申请", "添加到通讯录", "输入申请语"]
 ADD_TO_CONTACTS_KEYWORDS = ["添加到通讯录"]
 SEARCH_CLEANUP_KEYWORDS = ["叉", "点击叉"]
+CLOSE_FRIEND_WINDOW_KEYWORDS = ["点击叉", "关闭"]
 WECHAT_START_KEYWORDS = ["微信", "添加朋友", "申请添加朋友"]
 SEARCH_RESULT_RETRY_COUNT = 8
 SEARCH_RESULT_RETRY_INTERVAL_MS = 500
@@ -90,6 +91,7 @@ class PreparedRun:
     validation_ids: set[str]
     not_found_ids: set[str]
     confirm_click_ids: set[str]
+    success_close_ids: set[str]
     key_failure_ids: set[str]
 
 
@@ -718,6 +720,20 @@ def find_search_cleanup_start(nodes: dict[str, dict[str, Any]], node_ids: list[s
     return None
 
 
+def find_success_close_clicks(nodes: dict[str, dict[str, Any]], node_ids: list[str]) -> set[str]:
+    parents = parent_map(nodes)
+    close_ids: set[str] = set()
+    for node_id in node_ids:
+        node = nodes[node_id]
+        if node_type(node) != "MouseClickNode":
+            continue
+        if not contains_any(node_name(node), CLOSE_FRIEND_WINDOW_KEYWORDS):
+            continue
+        if nearest_start_ancestor(nodes, parents, node_id, ["添加朋友"]):
+            close_ids.add(node_id)
+    return close_ids
+
+
 def patch_search_not_found_recovery(tree_data: dict[str, Any], node_ids: list[str]) -> set[str]:
     nodes = tree_data.get("nodes", {})
     parents = parent_map(nodes)
@@ -876,6 +892,7 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         if node_type(nodes[node_id]) == "MouseClickNode"
         and contains_any(node_name(nodes[node_id]), CONFIRM_CLICK_KEYWORDS)
     }
+    success_close_ids = find_success_close_clicks(nodes, active_ids)
     key_failure_ids = {
         node_id
         for node_id in active_ids
@@ -895,6 +912,7 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         "validation_ids": validation_ids,
         "not_found_ids": not_found_ids,
         "confirm_click_ids": confirm_click_ids,
+        "success_close_ids": success_close_ids,
         "key_failure_ids": key_failure_ids,
         "disabled_accounts": disabled_accounts,
         "stabilized_clicks": stabilized_clicks,
@@ -940,6 +958,7 @@ def prepare_run(config: AutoDoorConfig, task_config: dict[str, Any]) -> Prepared
         validation_ids=set(patched["validation_ids"]),
         not_found_ids=set(patched["not_found_ids"]),
         confirm_click_ids=set(patched["confirm_click_ids"]),
+        success_close_ids=set(patched["success_close_ids"]),
         key_failure_ids=set(patched["key_failure_ids"]),
     )
 
@@ -1078,6 +1097,7 @@ def run_autodoor_once(
     state = {
         "target_index": -1,
         "current_target": None,
+        "awaiting_success_close_key": None,
         "completed": set(),
         "failed": set(),
         "invalid": set(),
@@ -1086,14 +1106,23 @@ def run_autodoor_once(
     def current_contact_id() -> int | None:
         return target_contact_id(state["current_target"])
 
+    def target_result_key(target: PreparedTarget | None) -> int | None:
+        if not target:
+            return None
+        return target.target_id or target_contact_id(target)
+
     def mark_terminal(event_name: str, message: str) -> None:
         target = state["current_target"]
         if not target:
             return
         contact_id = target_contact_id(target)
-        result_key = target.target_id or contact_id
+        result_key = target_result_key(target)
+        if result_key is None:
+            return
         if result_key in state["completed"] or result_key in state["failed"] or result_key in state["invalid"]:
             return
+        if state.get("awaiting_success_close_key") == result_key:
+            state["awaiting_success_close_key"] = None
         if event_name == "success":
             state["completed"].add(result_key)
         elif event_name == "invalid":
@@ -1115,6 +1144,7 @@ def run_autodoor_once(
             return
         state["target_index"] = next_index
         state["current_target"] = prepared.targets[next_index]
+        state["awaiting_success_close_key"] = None
         target = state["current_target"]
         emit(
             "progress",
@@ -1141,7 +1171,23 @@ def run_autodoor_once(
             return
 
         if status == "success" and node_id in prepared.confirm_click_ids:
-            mark_terminal("success", "好友申请已发送")
+            result_key = target_result_key(state["current_target"])
+            if result_key is not None:
+                state["awaiting_success_close_key"] = result_key
+                emit(
+                    "progress",
+                    "好友申请已确认，正在关闭添加朋友窗口",
+                    run_id=run_id,
+                    target_id=state["current_target"].target_id,
+                    target_type=state["current_target"].target_type,
+                    contact_id=current_contact_id(),
+                )
+            return
+
+        if status == "success" and node_id in prepared.success_close_ids:
+            result_key = target_result_key(state["current_target"])
+            if result_key is not None and state.get("awaiting_success_close_key") == result_key:
+                mark_terminal("success", "好友申请已确认并关闭窗口")
             return
 
         if status == "failure" and node_id in prepared.key_failure_ids:

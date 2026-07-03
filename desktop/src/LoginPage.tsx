@@ -57,7 +57,7 @@ function BrandPanel() {
         <p className="brand-tagline">智能微信好友管理，让每一次连接都简单高效</p>
         <div className="brand-features">
           <div className="brand-feat"><span className="feat-dot" />每日自动添加好友任务</div>
-          <div className="brand-feat"><span className="feat-dot" />智能标签分组管理</div>
+          <div className="brand-feat"><span className="feat-dot" />多微信窗口独立运行</div>
           <div className="brand-feat"><span className="feat-dot" />自定义打招呼语</div>
           <div className="brand-feat"><span className="feat-dot" />实时任务进度追踪</div>
         </div>

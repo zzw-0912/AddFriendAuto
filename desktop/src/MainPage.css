@@ -2344,7 +2344,7 @@
 
 .settings-form-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr) minmax(160px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
   gap: 16px;
   align-items: end;
 }
