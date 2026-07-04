@@ -7,7 +7,7 @@ import MainPage from "./MainPage";
 import { FALLBACK_CLIENT_VERSION, installClientUpdateInterceptor, saveAccount, type ClientUpdateRequiredPayload } from "./api";
 import "./App.css";
 
-const API_BASE = (import.meta.env.VITE_API_BASE || "http://127.0.0.1:8001").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE || "http://47.111.3.83:8001").replace(/\/$/, "");
 
 interface StoredAuth {
   token: string;

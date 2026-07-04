@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE || "";
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://47.111.3.83:8001";
 
 export interface PageResponse<T> {
   items: T[];
