@@ -15,12 +15,15 @@ from app.models.trial_quota import TrialQuota
 from app.models.user import User
 from app.schemas.status import MembershipInfo, TrialInfo
 from app.services.membership_service import get_current_membership
+from app.services.plan_visibility import PUBLIC_MAX_SLOT_COUNT
 from app.schemas.task import ClaimTargetsResponse, StartCheckResponse, TaskResponse, TaskTargetItem
 
 
 STALE_RUNNING_TASK_HOURS = 12
 VALID_TARGET_TYPES = {"contact", "phone", "wechat_id"}
 TRIAL_CHARGE_EVENTS = {"success"}
+MEMBER_MONTHLY_SUCCESS_PER_SLOT = 700
+MEMBER_LIMIT_REACHED_REASON = "当前会员任务暂不可用，请稍后再试"
 
 
 def random_order_expression(db: Session):
@@ -87,10 +90,15 @@ def allowed_slot_count(plan_id: int | None, has_membership: bool) -> int:
     if not has_membership:
         return 1
     if plan_id == 2:
-        return 2
+        return min(2, PUBLIC_MAX_SLOT_COUNT)
     if plan_id == 3:
-        return 3
+        return min(3, PUBLIC_MAX_SLOT_COUNT)
     return 1
+
+
+def member_monthly_success_limit(plan_id: int | None) -> int:
+    slot_count = max(1, allowed_slot_count(plan_id, True))
+    return slot_count * MEMBER_MONTHLY_SUCCESS_PER_SLOT
 
 
 def access_snapshot(
@@ -136,8 +144,61 @@ def trial_claim_limit(daily_limit: int | None, remaining: int) -> int:
     return min(requested, available)
 
 
-def member_claim_limit(daily_limit: int | None) -> int:
-    return max(1, int(daily_limit or 1))
+def member_claim_limit(daily_limit: int | None, remaining: int | None = None) -> int:
+    requested = max(1, int(daily_limit or 1))
+    if remaining is None:
+        return requested
+    available = max(0, int(remaining or 0))
+    return min(requested, available)
+
+
+def member_success_count_for_membership(user_id: int, membership: Membership | None, db: Session) -> int:
+    if not membership:
+        return 0
+
+    query = (
+        db.query(func.count(TaskResult.id))
+        .join(Task, TaskResult.task_id == Task.id)
+        .filter(
+            Task.user_id == user_id,
+            TaskResult.result == "success",
+        )
+    )
+    if membership.starts_at is not None:
+        query = query.filter(TaskResult.created_at >= membership.starts_at)
+    if membership.ends_at is not None:
+        query = query.filter(TaskResult.created_at <= membership.ends_at)
+    return int(query.scalar() or 0)
+
+
+def member_reserved_target_count(user_id: int, db: Session, exclude_task_id: int | None = None) -> int:
+    stale_before = datetime.utcnow() - timedelta(hours=STALE_RUNNING_TASK_HOURS)
+    query = db.query(func.count(TaskTarget.id)).filter(
+        TaskTarget.user_id == user_id,
+        TaskTarget.status == "claimed",
+        TaskTarget.claimed_task_id.isnot(None),
+    ).join(Task, Task.id == TaskTarget.claimed_task_id).filter(
+        Task.status == "running",
+        Task.started_at >= stale_before,
+    )
+    if exclude_task_id is not None:
+        query = query.filter(TaskTarget.claimed_task_id != exclude_task_id)
+    return int(query.scalar() or 0)
+
+
+def member_remaining_quota(
+    user_id: int,
+    membership: Membership | None,
+    db: Session,
+    exclude_task_id: int | None = None,
+) -> int:
+    if not membership:
+        return 0
+
+    monthly_limit = member_monthly_success_limit(membership.plan_id)
+    used_count = member_success_count_for_membership(user_id, membership, db)
+    reserved_count = member_reserved_target_count(user_id, db, exclude_task_id)
+    return max(0, monthly_limit - used_count - reserved_count)
 
 
 def finish_stale_running_tasks(user_id: int, slot_id: int, db: Session) -> bool:
@@ -221,8 +282,19 @@ def start_check(
         )
 
     finish_existing_running_tasks(user.id, slot_id, db)
+    member_remaining = None
+    if membership_info.is_active and active_membership:
+        member_remaining = member_remaining_quota(user.id, active_membership, db)
+        if member_remaining <= 0:
+            return StartCheckResponse(
+                can_start=False,
+                reason=MEMBER_LIMIT_REACHED_REASON,
+                membership=membership_info,
+                trial=trial_info,
+            )
+
     effective_daily_limit = (
-        daily_limit
+        member_claim_limit(daily_limit, member_remaining)
         if membership_info.is_active
         else trial_claim_limit(daily_limit, trial_info.remaining)
     )
@@ -256,7 +328,7 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
     if task.status != "running":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not running")
 
-    _, membership_info, _, trial_info = access_snapshot(user.id, db, lock_quota=True)
+    active_membership, membership_info, _, trial_info = access_snapshot(user.id, db, lock_quota=True)
     if not membership_info.is_active and trial_info.remaining <= 0:
         finish_task_in_place(task, db)
         db.commit()
@@ -297,8 +369,26 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
             trial=trial_info,
         )
 
+    if membership_info.is_active and active_membership:
+        member_remaining = member_remaining_quota(user.id, active_membership, db)
+        if member_remaining <= 0:
+            finish_task_in_place(task, db)
+            db.commit()
+            return ClaimTargetsResponse(
+                can_claim=False,
+                reason=MEMBER_LIMIT_REACHED_REASON,
+                task_id=task.id,
+                target_type=task.target_type,
+                count=0,
+                targets=[],
+                membership=membership_info,
+                trial=trial_info,
+            )
+    else:
+        member_remaining = None
+
     limit = (
-        member_claim_limit(task.daily_limit)
+        member_claim_limit(task.daily_limit, member_remaining)
         if membership_info.is_active
         else trial_claim_limit(task.daily_limit, trial_info.remaining)
     )
