@@ -12,6 +12,93 @@ export class AuthError extends Error {
   }
 }
 
+export interface ClientUpdateRequiredPayload {
+  code?: string;
+  detail?: string;
+  latest_version?: string;
+  force_update_enabled?: boolean;
+  download_url?: string | null;
+  qr_image_url?: string | null;
+  message?: string | null;
+  updated_at?: string | null;
+}
+
+type ClientUpdateRequiredHandler = (payload: ClientUpdateRequiredPayload) => void;
+
+const CLIENT_VERSION_HEADER = "X-Client-Version";
+export const FALLBACK_CLIENT_VERSION = import.meta.env.VITE_APP_VERSION || "0.1.0";
+
+let originalFetch: typeof window.fetch | null = null;
+let activeApiBase = "";
+let activeClientVersion = FALLBACK_CLIENT_VERSION;
+let activeUpdateHandler: ClientUpdateRequiredHandler | null = null;
+
+export function installClientUpdateInterceptor(
+  apiBase: string,
+  clientVersion: string,
+  onUpdateRequired: ClientUpdateRequiredHandler,
+) {
+  activeApiBase = apiBase.replace(/\/$/, "");
+  activeClientVersion = (clientVersion || FALLBACK_CLIENT_VERSION).trim() || FALLBACK_CLIENT_VERSION;
+  activeUpdateHandler = onUpdateRequired;
+
+  if (originalFetch) return;
+
+  originalFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const shouldAttachVersion = isBackendRequest(input, activeApiBase);
+    const nextInit = shouldAttachVersion ? withClientVersionHeader(input, init, activeClientVersion) : init;
+    const response = await originalFetch!(input, nextInit);
+
+    if (shouldAttachVersion && response.status === 426) {
+      void notifyClientUpdateRequired(response);
+    }
+
+    return response;
+  };
+}
+
+function withClientVersionHeader(input: RequestInfo | URL, init: RequestInit | undefined, clientVersion: string): RequestInit {
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+  headers.set(CLIENT_VERSION_HEADER, clientVersion);
+  return { ...init, headers };
+}
+
+function isBackendRequest(input: RequestInfo | URL, apiBase: string): boolean {
+  if (!apiBase) return false;
+  const inputUrl = getAbsoluteUrl(input);
+  if (!inputUrl) return false;
+
+  try {
+    const target = new URL(inputUrl);
+    const base = new URL(apiBase, window.location.href);
+    const basePath = base.pathname.replace(/\/$/, "");
+    return target.origin === base.origin && (!basePath || target.pathname === basePath || target.pathname.startsWith(`${basePath}/`));
+  } catch {
+    return false;
+  }
+}
+
+function getAbsoluteUrl(input: RequestInfo | URL): string | null {
+  if (typeof input === "string") return new URL(input, window.location.href).toString();
+  if (input instanceof URL) return input.toString();
+  if (input instanceof Request) return new URL(input.url, window.location.href).toString();
+  return null;
+}
+
+async function notifyClientUpdateRequired(response: Response) {
+  try {
+    const payload = await response.clone().json() as ClientUpdateRequiredPayload;
+    activeUpdateHandler?.(payload);
+  } catch {
+    activeUpdateHandler?.({
+      code: "CLIENT_UPDATE_REQUIRED",
+      detail: "当前软件版本已停用，请下载最新版本后继续使用。",
+    });
+  }
+}
+
 export async function readErrorDetail(res: Response): Promise<string> {
   const text = await res.text().catch(() => "");
   if (!text) return "";

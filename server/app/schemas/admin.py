@@ -68,7 +68,7 @@ class UpdateMembershipRequest(BaseModel):
 
 
 class UpdateTrialQuotaRequest(BaseModel):
-    action: Literal["decrement", "set_remaining", "clear"]
+    action: Literal["increment", "decrement", "set_remaining", "clear"]
     amount: int | None = Field(default=None, ge=1, le=10_000)
     remaining_count: int | None = Field(default=None, ge=0, le=10_000)
 

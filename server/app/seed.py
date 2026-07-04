@@ -6,7 +6,9 @@ from sqlalchemy import text
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import hash_password
 from app.models.admin_user import AdminUser
+from app.models.client_update import ClientUpdateConfig
 from app.models.feedback import Feedback
+from app.models.hero_slide import HeroSlide
 from app.models.plan import Plan
 from app.models.task import Task
 from app.models.task_result import TaskResult
@@ -17,7 +19,7 @@ from app.models.user import User
 DEFAULT_PLANS = [
     {"id": 1, "name": "Plus", "duration_days": 30, "price_cents": 30000, "enabled": True},
     {"id": 2, "name": "Pro 5x", "duration_days": 30, "price_cents": 50000, "enabled": True},
-    {"id": 3, "name": "Pro 20x", "duration_days": 30, "price_cents": 80000, "enabled": True},
+    {"id": 3, "name": "Pro 20x", "duration_days": 30, "price_cents": 80000, "enabled": False},
 ]
 
 
@@ -25,6 +27,8 @@ def init_db():
     is_sqlite = engine.dialect.name == "sqlite"
     if is_sqlite:
         Base.metadata.create_all(bind=engine)
+    ClientUpdateConfig.__table__.create(bind=engine, checkfirst=True)
+    HeroSlide.__table__.create(bind=engine, checkfirst=True)
 
     # Add columns to existing tables if missing (SQLite compat)
     if is_sqlite:
@@ -117,6 +121,24 @@ def init_db():
             else:
                 db.add(Plan(**defaults))
         if DEFAULT_PLANS:
+            db.commit()
+
+        existing_hero_slots = {slide.slot_index for slide in db.query(HeroSlide).all()}
+        missing_hero_slots = [slot_index for slot_index in range(1, 4) if slot_index not in existing_hero_slots]
+        for slot_index in missing_hero_slots:
+            db.add(HeroSlide(slot_index=slot_index))
+        if missing_hero_slots:
+            db.commit()
+
+        if not db.query(ClientUpdateConfig).filter(ClientUpdateConfig.id == 1).first():
+            db.add(
+                ClientUpdateConfig(
+                    id=1,
+                    latest_version="0.1.0",
+                    force_update_enabled=False,
+                    message="当前软件版本已停用，请下载最新版本后继续使用。",
+                )
+            )
             db.commit()
 
         if not db.query(AdminUser).first():

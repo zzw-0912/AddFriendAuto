@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
-import { isLoggedIn, clearToken, login as apiLogin } from "./api";
-import LoginPage from "./LoginPage";
-import Dashboard from "./Dashboard";
-import UsersPage from "./UsersPage";
-import UserDetailPage from "./UserDetailPage";
-import DevicesPage from "./DevicesPage";
-import PlansPage from "./PlansPage";
-import OrdersPage from "./OrdersPage";
-import TasksPage from "./TasksPage";
+import { useState } from "react";
+import { clearToken, isLoggedIn, login as apiLogin } from "./api";
 import AuditLogsPage from "./AuditLogsPage";
+import ClientUpdatePage from "./ClientUpdatePage";
+import Dashboard from "./Dashboard";
+import DevicesPage from "./DevicesPage";
 import FeedbackPage from "./FeedbackPage";
+import HeroSlidesPage from "./HeroSlidesPage";
+import LoginPage from "./LoginPage";
+import OrdersPage from "./OrdersPage";
+import PlansPage from "./PlansPage";
+import TasksPage from "./TasksPage";
+import UserDetailPage from "./UserDetailPage";
+import UsersPage from "./UsersPage";
 import "./style.css";
 
-type Page = "dashboard" | "users" | "user-detail" | "devices" | "plans" | "orders" | "tasks" | "audit-logs" | "feedback";
+type Page =
+  | "dashboard"
+  | "users"
+  | "user-detail"
+  | "devices"
+  | "plans"
+  | "orders"
+  | "hero-slides"
+  | "client-update"
+  | "tasks"
+  | "audit-logs"
+  | "feedback";
 
 function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
@@ -30,13 +43,13 @@ function App() {
     setLoggedIn(false);
   };
 
-  const navigate = (p: Page) => {
-    setPage(p);
+  const navigate = (nextPage: Page) => {
+    setPage(nextPage);
     setSelectedUserId(null);
   };
 
-  const showUserDetail = (id: number) => {
-    setSelectedUserId(id);
+  const showUserDetail = (userId: number) => {
+    setSelectedUserId(userId);
     setPage("user-detail");
   };
 
@@ -57,6 +70,8 @@ function App() {
           <button className={page === "devices" ? "active" : ""} onClick={() => navigate("devices")}>设备管理</button>
           <button className={page === "plans" ? "active" : ""} onClick={() => navigate("plans")}>套餐管理</button>
           <button className={page === "orders" ? "active" : ""} onClick={() => navigate("orders")}>订单管理</button>
+          <button className={page === "hero-slides" ? "active" : ""} onClick={() => navigate("hero-slides")}>轮播图管理</button>
+          <button className={page === "client-update" ? "active" : ""} onClick={() => navigate("client-update")}>版本控制</button>
           <button className={page === "tasks" ? "active" : ""} onClick={() => navigate("tasks")}>任务日志</button>
           <button className={page === "audit-logs" ? "active" : ""} onClick={() => navigate("audit-logs")}>操作审计</button>
           <button className={page === "feedback" ? "active" : ""} onClick={() => navigate("feedback")}>用户反馈</button>
@@ -74,6 +89,8 @@ function App() {
         {page === "devices" && <DevicesPage />}
         {page === "plans" && <PlansPage />}
         {page === "orders" && <OrdersPage />}
+        {page === "hero-slides" && <HeroSlidesPage />}
+        {page === "client-update" && <ClientUpdatePage />}
         {page === "tasks" && <TasksPage />}
         {page === "audit-logs" && <AuditLogsPage />}
         {page === "feedback" && <FeedbackPage />}

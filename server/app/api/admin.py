@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+import logging
+
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,11 +21,14 @@ from app.schemas.admin import (
     UserDetailResponse,
     UserListItem,
 )
+from app.schemas.client_update import ClientUpdateConfigRequest, ClientUpdateConfigResponse
+from app.schemas.hero_slide import HeroSlideResponse
 from app.services.admin_service import (
     admin_login,
     audit_detail,
     confirm_order_payment,
     create_audit_log,
+    delete_user,
     list_audit_logs,
     list_devices,
     list_feedback,
@@ -39,8 +44,17 @@ from app.services.admin_service import (
     update_plan,
     update_trial_quota,
 )
+from app.services.client_update_service import (
+    clear_client_update_qr_image,
+    get_client_update_config,
+    set_client_force_update,
+    update_client_update_config,
+    upload_client_update_qr_image,
+)
+from app.services.hero_slide_service import clear_hero_slide_image, list_hero_slides, upload_hero_slide_image
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger("friendauto.admin.api")
 
 
 @router.post("/login", response_model=AdminTokenResponse)
@@ -76,6 +90,15 @@ def get_user(
     result = get_user_detail(user_id, db)
     create_audit_log(admin.id, "view_user_detail", "user", user_id, audit_detail(email=result.email), db)
     return result
+
+
+@router.delete("/users/{user_id}")
+def delete_user_endpoint(
+    user_id: int,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return delete_user(user_id, admin.id, db)
 
 
 @router.patch("/users/{user_id}/membership")
@@ -251,6 +274,162 @@ def get_feedback(
         "feedback",
         None,
         audit_detail(page=page, page_size=page_size, total=result.get("total")),
+        db,
+    )
+    return result
+
+
+@router.get("/client-update", response_model=ClientUpdateConfigResponse)
+def get_admin_client_update_config(
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    result = get_client_update_config(db)
+    create_audit_log(admin.id, "view_client_update_config", "client_update", 1, audit_detail(), db)
+    return result
+
+
+@router.patch("/client-update", response_model=ClientUpdateConfigResponse)
+def patch_admin_client_update_config(
+    req: ClientUpdateConfigRequest,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    result = update_client_update_config(req, db)
+    create_audit_log(
+        admin.id,
+        "update_client_update_config",
+        "client_update",
+        1,
+        audit_detail(
+            latest_version=result.latest_version,
+            force_update_enabled=result.force_update_enabled,
+            download_url=result.download_url,
+        ),
+        db,
+    )
+    return result
+
+
+@router.post("/client-update/force", response_model=ClientUpdateConfigResponse)
+def post_admin_client_update_force(
+    enabled: bool = Query(...),
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    result = set_client_force_update(enabled, db)
+    create_audit_log(
+        admin.id,
+        "toggle_client_force_update",
+        "client_update",
+        1,
+        audit_detail(enabled=enabled, latest_version=result.latest_version),
+        db,
+    )
+    return result
+
+
+@router.post("/client-update/qr-image", response_model=ClientUpdateConfigResponse)
+def post_admin_client_update_qr_image(
+    image: UploadFile = File(...),
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info(
+        "admin_client_update_qr_upload_request admin_id=%s filename=%s content_type=%s size=%s",
+        admin.id,
+        image.filename,
+        image.content_type,
+        getattr(image, "size", None),
+    )
+    result = upload_client_update_qr_image(image, db)
+    logger.info(
+        "admin_client_update_qr_upload_success admin_id=%s image_url=%s",
+        admin.id,
+        result.qr_image_url,
+    )
+    create_audit_log(
+        admin.id,
+        "upload_client_update_qr_image",
+        "client_update",
+        1,
+        audit_detail(qr_image_url=result.qr_image_url),
+        db,
+    )
+    return result
+
+
+@router.delete("/client-update/qr-image", response_model=ClientUpdateConfigResponse)
+def delete_admin_client_update_qr_image(
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info("admin_client_update_qr_clear_request admin_id=%s", admin.id)
+    result = clear_client_update_qr_image(db)
+    logger.info("admin_client_update_qr_clear_success admin_id=%s", admin.id)
+    create_audit_log(admin.id, "clear_client_update_qr_image", "client_update", 1, audit_detail(), db)
+    return result
+
+
+@router.get("/hero-slides", response_model=list[HeroSlideResponse])
+def get_admin_hero_slides(
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info("admin_hero_slides_list_request admin_id=%s", admin.id)
+    result = list_hero_slides(db)
+    create_audit_log(admin.id, "view_hero_slides", "hero_slide", None, audit_detail(count=len(result)), db)
+    return result
+
+
+@router.post("/hero-slides/{slot_index}/image", response_model=HeroSlideResponse)
+def post_admin_hero_slide_image(
+    slot_index: int,
+    image: UploadFile = File(...),
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info(
+        "admin_hero_slide_upload_request admin_id=%s slot=%s filename=%s content_type=%s size=%s",
+        admin.id,
+        slot_index,
+        image.filename,
+        image.content_type,
+        getattr(image, "size", None),
+    )
+    result = upload_hero_slide_image(slot_index, image, db)
+    logger.info(
+        "admin_hero_slide_upload_success admin_id=%s slot=%s image_url=%s",
+        admin.id,
+        slot_index,
+        result.image_url,
+    )
+    create_audit_log(
+        admin.id,
+        "upload_hero_slide_image",
+        "hero_slide",
+        slot_index,
+        audit_detail(slot_index=slot_index, image_url=result.image_url),
+        db,
+    )
+    return result
+
+
+@router.delete("/hero-slides/{slot_index}/image", response_model=HeroSlideResponse)
+def delete_admin_hero_slide_image(
+    slot_index: int,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info("admin_hero_slide_clear_request admin_id=%s slot=%s", admin.id, slot_index)
+    result = clear_hero_slide_image(slot_index, db)
+    logger.info("admin_hero_slide_clear_success admin_id=%s slot=%s", admin.id, slot_index)
+    create_audit_log(
+        admin.id,
+        "clear_hero_slide_image",
+        "hero_slide",
+        slot_index,
+        audit_detail(slot_index=slot_index),
         db,
     )
     return result

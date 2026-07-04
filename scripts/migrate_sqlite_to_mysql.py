@@ -12,9 +12,11 @@ DEFAULT_SQLITE_URL = f"sqlite:///{(ROOT / 'server' / 'friendauto.db').as_posix()
 APP_TABLES = [
     "admin_audit_logs",
     "admin_users",
+    "client_update_configs",
     "devices",
     "email_codes",
     "feedbacks",
+    "hero_slides",
     "memberships",
     "orders",
     "plans",

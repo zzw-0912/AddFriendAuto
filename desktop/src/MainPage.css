@@ -317,6 +317,27 @@
   bottom: -180px;
 }
 
+.hero-slide-with-image {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  background: #e8f0ff;
+}
+
+.hero-slide-with-image::before,
+.hero-slide-with-image::after {
+  display: none;
+}
+
+.hero-slide-full-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .hero-copy {
   position: relative;
   z-index: 1;
@@ -370,6 +391,49 @@
   --accent: #3f82ff;
   --accent-soft: rgba(63, 130, 255, 0.14);
   --accent-fade: rgba(63, 130, 255, 0.22);
+}
+
+.hero-art.hero-art-image {
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid rgba(207, 222, 248, 0.96);
+  background:
+    linear-gradient(160deg, rgba(255,255,255,0.76), rgba(220,233,255,0.44)),
+    linear-gradient(180deg, rgba(210,225,249,0.5), rgba(183,205,244,0.36));
+  box-shadow: 0 22px 38px rgba(84, 118, 186, 0.16);
+}
+
+.hero-art.hero-art-image::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.34), rgba(255,255,255,0) 42%),
+    radial-gradient(circle at 78% 24%, rgba(121,160,255,0.24), transparent 32%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.hero-art.hero-art-image::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  height: 42px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(26, 43, 81, 0.2), rgba(26, 43, 81, 0));
+  filter: blur(24px);
+  opacity: 0.52;
+  pointer-events: none;
+}
+
+.hero-slide-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .hero-ring {

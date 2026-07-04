@@ -2,9 +2,12 @@ node_modules/
 target/
 *.db
 .env
+.env.local
+.env.*.local
 __pycache__/
 *.pyc
 dist/
 .vite/
 uploads/
+logs/
 *.tsbuildinfo

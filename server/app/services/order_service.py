@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 from app.models.order import Order
 from app.models.plan import Plan
 from app.models.user import User
+from app.services.plan_visibility import public_plan_query
 
 
 def create_order(user: User, plan_id: int, payment_channel: str, db: Session) -> Order:
-    plan = db.query(Plan).filter(Plan.id == plan_id, Plan.enabled == True).first()
+    plan = public_plan_query(db.query(Plan).filter(Plan.id == plan_id)).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or disabled")
 

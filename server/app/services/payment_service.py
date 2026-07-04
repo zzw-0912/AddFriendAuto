@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.membership import Membership
 from app.models.order import Order
 from app.models.plan import Plan
+from app.services.plan_visibility import is_public_plan
 
 
 def process_wechat_payment(order_no: str, db: Session) -> dict:
@@ -49,6 +50,8 @@ def process_order_payment(order: Order, channel: str, db: Session) -> dict:
     plan = db.query(Plan).filter(Plan.id == order.plan_id).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order plan not found")
+    if not is_public_plan(plan):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order plan is disabled")
 
     now = datetime.utcnow()
     order.status = "paid"

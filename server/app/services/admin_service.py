@@ -9,12 +9,14 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.admin_user import AdminUser
 from app.models.device import Device
+from app.models.email_code import EmailCode
 from app.models.feedback import Feedback
 from app.models.membership import Membership
 from app.models.order import Order
 from app.models.plan import Plan
 from app.models.task import Task
 from app.models.task_result import TaskResult
+from app.models.task_target import TaskTarget
 from app.models.trial_quota import TrialQuota
 from app.models.user import User
 from app.schemas.admin import (
@@ -293,11 +295,16 @@ def update_trial_quota(
         db.add(quota)
         db.flush()
 
-    old_used = int(quota.used_count or 0)
-    old_remaining = int(quota.remaining_count or 0)
-    total = max(0, int(quota.total_count or 0))
+    old_total = max(0, int(quota.total_count or 0))
+    old_used = max(0, int(quota.used_count or 0))
+    old_remaining = max(0, int(quota.remaining_count or 0))
+    total = old_total
 
-    if action == "decrement":
+    if action == "increment":
+        increment_by = amount or 1
+        total = old_total + increment_by
+        new_remaining = old_remaining + increment_by
+    elif action == "decrement":
         decrement_by = amount or 1
         new_remaining = max(0, old_remaining - decrement_by)
     elif action == "set_remaining":
@@ -310,6 +317,7 @@ def update_trial_quota(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown action: {action}")
 
     new_remaining = min(max(0, new_remaining), total)
+    quota.total_count = total
     quota.remaining_count = new_remaining
     quota.used_count = max(0, total - new_remaining)
     db.commit()
@@ -321,8 +329,8 @@ def update_trial_quota(
         "user",
         user_id,
         (
-            f"action={action}; used {old_used}->{quota.used_count}; "
-            f"remaining {old_remaining}->{quota.remaining_count}; total={quota.total_count}"
+            f"action={action}; total {old_total}->{quota.total_count}; "
+            f"used {old_used}->{quota.used_count}; remaining {old_remaining}->{quota.remaining_count}"
         ),
         db,
     )
@@ -331,6 +339,64 @@ def update_trial_quota(
         "total": quota.total_count,
         "used": quota.used_count,
         "remaining": quota.remaining_count,
+    }
+
+
+def delete_user(user_id: int, admin_user_id: int, db: Session) -> dict:
+    user = db.query(User).filter(User.id == user_id).with_for_update().first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    email = user.email
+    task_ids = [task_id for (task_id,) in db.query(Task.id).filter(Task.user_id == user_id).all()]
+    deleted_counts: dict[str, int] = {}
+
+    if task_ids:
+        deleted_counts["task_results"] = (
+            db.query(TaskResult)
+            .filter(TaskResult.task_id.in_(task_ids))
+            .delete(synchronize_session=False)
+        )
+    else:
+        deleted_counts["task_results"] = 0
+
+    for model, key in (
+        (TaskTarget, "task_targets"),
+        (Task, "tasks"),
+        (Feedback, "feedbacks"),
+        (Order, "orders"),
+        (Membership, "memberships"),
+        (TrialQuota, "trial_quotas"),
+        (Device, "devices"),
+    ):
+        deleted_counts[key] = (
+            db.query(model)
+            .filter(model.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+
+    deleted_counts["email_codes"] = (
+        db.query(EmailCode)
+        .filter(EmailCode.email == email)
+        .delete(synchronize_session=False)
+    )
+
+    db.delete(user)
+    db.commit()
+
+    create_audit_log(
+        admin_user_id,
+        "delete_user",
+        "user",
+        user_id,
+        audit_detail(email=email, deleted_counts=deleted_counts),
+        db,
+    )
+    return {
+        "success": True,
+        "deleted_user_id": user_id,
+        "email": email,
+        "deleted_counts": deleted_counts,
     }
 
 

@@ -52,6 +52,7 @@ interface LoadError {
 }
 
 const APP_VERSION = "0.1.0";
+const VISIBLE_WECHAT_SLOT_IDS = [1, 2];
 
 function formatDate(s: string | null) {
   return s ? s.slice(0, 10) : "-";
@@ -440,7 +441,7 @@ function ProfilePage({
         </div>
 
         <div className="wechat-bind-list">
-          {[1, 2, 3].map((slotId) => {
+          {VISIBLE_WECHAT_SLOT_IDS.map((slotId) => {
             const binding = wechatBindings[String(slotId)];
             return (
               <div className="wechat-bind-row" key={slotId}>

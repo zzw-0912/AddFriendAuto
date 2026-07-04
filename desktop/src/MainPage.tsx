@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiGet } from "./api";
 import PaymentModal from "./PaymentModal";
 import QRCodeModal from "./QRCodeModal";
 import FeedbackModal from "./FeedbackModal";
@@ -35,6 +36,7 @@ const BOTTOM_NAV_ITEMS = [
 ];
 
 const MEMBER_STATUS_REFRESH_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_MAX_TASK_SLOTS = 2;
 
 const HERO_SLIDES = [
   {
@@ -53,6 +55,12 @@ const HERO_SLIDES = [
     cta: "开始使用",
   },
 ];
+
+interface HeroSlideImageConfig {
+  slot_index: number;
+  image_url: string | null;
+  updated_at?: string | null;
+}
 
 function loadTaskDefaults(): TaskDefaults {
   try {
@@ -86,6 +94,32 @@ function msUntilNextLocalDay() {
   return Math.max(60_000, next.getTime() - now.getTime());
 }
 
+function createDefaultHeroSlideImages(): HeroSlideImageConfig[] {
+  return HERO_SLIDES.map((_, index) => ({
+    slot_index: index + 1,
+    image_url: null,
+    updated_at: null,
+  }));
+}
+
+function normalizeHeroSlideImages(images: HeroSlideImageConfig[]): HeroSlideImageConfig[] {
+  const imageMap = new Map(images.map((image) => [image.slot_index, image]));
+  return HERO_SLIDES.map((_, index) => imageMap.get(index + 1) ?? {
+    slot_index: index + 1,
+    image_url: null,
+    updated_at: null,
+  });
+}
+
+function resolveHeroSlideImageUrl(apiBase: string, url: string) {
+  if (!url) return "";
+  if (/^(https?:)?\/\//.test(url) || url.startsWith("data:") || url.startsWith("blob:")) {
+    return url;
+  }
+  if (!apiBase) return url;
+  return `${apiBase.replace(/\/$/, "")}/${url.replace(/^\//, "")}`;
+}
+
 function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Props) {
   const { isOffline } = useNetworkStatus();
   const [status, setStatus] = useState<UserStatus | null>(null);
@@ -96,6 +130,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
   const [activeNav, setActiveNav] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slidePaused, setSlidePaused] = useState(false);
+  const [heroSlideImages, setHeroSlideImages] = useState<HeroSlideImageConfig[]>(() => createDefaultHeroSlideImages());
   const [taskDefaults] = useState<TaskDefaults>(() => loadTaskDefaults());
   const [taskDefaultsVersion] = useState(0);
 
@@ -119,9 +154,23 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
     return null;
   }, [apiBase, auth.token, onLogout]);
 
+  const fetchHeroSlideImages = useCallback(async () => {
+    try {
+      const data = await apiGet<HeroSlideImageConfig[]>(apiBase, "/hero-slides");
+      setHeroSlideImages(normalizeHeroSlideImages(data));
+    } catch {
+      setHeroSlideImages(createDefaultHeroSlideImages());
+    }
+  }, [apiBase]);
+
   useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
+
+  useEffect(() => {
+    if (activeNav !== "") return;
+    void fetchHeroSlideImages();
+  }, [activeNav, fetchHeroSlideImages]);
 
   useEffect(() => {
     if (!status?.membership.is_active) return;
@@ -150,7 +199,8 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
 
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
   const planId = status?.membership.plan_id;
-  const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+  const rawCardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+  const cardCount = Math.min(rawCardCount, PUBLIC_MAX_TASK_SLOTS);
   const trialRemaining = Math.max(0, status?.trial.remaining ?? 0);
   const membershipExpired = isMembershipExpired(status);
   const showExpiredBadge = membershipExpired && trialRemaining <= 0;
@@ -194,7 +244,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
                 <span className="tutorial-step-num">01</span>
                 <h3>先绑定微信窗口</h3>
                 <p>进入“我的”页面后，先点击“刷新窗口”，再从下拉框里选择当前已经打开的微信主窗口，最后点击“绑定”完成关联。</p>
-                <div className="tutorial-tip">每个任务卡都会固定使用对应的微信窗口。微信 1、微信 2、微信 3 建议分别绑定不同的微信主窗口，避免启动任务时找错窗口。</div>
+                <div className="tutorial-tip">每个任务卡都会固定使用对应的微信窗口。微信 1、微信 2 建议分别绑定不同的微信主窗口，避免启动任务时找错窗口。</div>
               </div>
               <div className="tutorial-image-frame">
                 <img src="/tutorial/wechat-binding.png" alt="绑定微信窗口" />
@@ -269,27 +319,38 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
           onMouseLeave={() => setSlidePaused(false)}
         >
           <div className="hero-track" style={{ transform: `translateX(-${currentSlide * 100}%)` }}>
-            {HERO_SLIDES.map((slide, i) => (
-              <article key={i} className="hero-slide">
-                <div className="hero-copy">
-                  <h2 className="hero-title">{slide.title}</h2>
-                  <p className="hero-desc">{slide.desc}</p>
-                  <button className="hero-cta" type="button">{slide.cta}</button>
-                </div>
-                <div className="hero-art" aria-hidden="true">
-                  <div className="hero-ring" />
-                  <div className="hero-card" />
-                  <div className="hero-sheet"><div className="hero-line" /></div>
-                  <div className="hero-avatar" />
-                  <div className="hero-plus" />
-                  <div className="hero-spark spark-a" />
-                  <div className="hero-spark spark-b" />
-                  <div className="hero-spark spark-c" />
-                  <div className="hero-dash dash-a" />
-                  <div className="hero-dash dash-b" />
-                </div>
-              </article>
-            ))}
+            {HERO_SLIDES.map((slide, i) => {
+              const heroImage = heroSlideImages[i]?.image_url ?? null;
+              return heroImage ? (
+                <article key={i} className="hero-slide hero-slide-with-image">
+                  <img
+                    className="hero-slide-full-image"
+                    src={resolveHeroSlideImageUrl(apiBase, heroImage)}
+                    alt=""
+                  />
+                </article>
+              ) : (
+                <article key={i} className="hero-slide">
+                  <div className="hero-copy">
+                    <h2 className="hero-title">{slide.title}</h2>
+                    <p className="hero-desc">{slide.desc}</p>
+                    <button className="hero-cta" type="button">{slide.cta}</button>
+                  </div>
+                  <div className="hero-art" aria-hidden="true">
+                    <div className="hero-ring" />
+                    <div className="hero-card" />
+                    <div className="hero-sheet"><div className="hero-line" /></div>
+                    <div className="hero-avatar" />
+                    <div className="hero-plus" />
+                    <div className="hero-spark spark-a" />
+                    <div className="hero-spark spark-b" />
+                    <div className="hero-spark spark-c" />
+                    <div className="hero-dash dash-a" />
+                    <div className="hero-dash dash-b" />
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           {/* Dots */}
