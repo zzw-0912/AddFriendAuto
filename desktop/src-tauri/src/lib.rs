@@ -223,6 +223,9 @@ fn validate_autodoor_config(config: &AutoDoorConfig) -> Result<(), String> {
 fn resolve_worker_path() -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let candidates = [
+        cwd.join("..").join("scripts").join("platform_worker.exe"),
+        cwd.join("..").join("..").join("scripts").join("platform_worker.exe"),
+        cwd.join("scripts").join("platform_worker.exe"),
         cwd.join("..").join("scripts").join("platform_worker.py"),
         cwd.join("..").join("..").join("scripts").join("platform_worker.py"),
         cwd.join("scripts").join("platform_worker.py"),
@@ -234,7 +237,14 @@ fn resolve_worker_path() -> Result<PathBuf, String> {
         }
     }
 
-    Err("未找到 scripts/platform_worker.py".to_string())
+    Err("未找到 scripts/platform_worker.exe 或 scripts/platform_worker.py".to_string())
+}
+
+fn is_worker_executable(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case("exe"))
+        .unwrap_or(false)
 }
 
 fn run_powershell(script: &str) -> Result<String, String> {
@@ -504,8 +514,15 @@ fn start_task(
 
     let script_path = resolve_worker_path()?;
 
-    let mut child = Command::new("python")
-        .arg(&script_path)
+    let mut command = if is_worker_executable(&script_path) {
+        Command::new(&script_path)
+    } else {
+        let mut command = Command::new("python");
+        command.arg(&script_path);
+        command
+    };
+
+    let mut child = command
         .env("PYTHONIOENCODING", "utf-8")
         .env("PYTHONUTF8", "1")
         .stdin(Stdio::piped())
