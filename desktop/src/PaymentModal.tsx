@@ -50,6 +50,9 @@ const planTiers: Record<number, { name: string; usage: string; features: string[
 };
 
 const legacyPlanNameToId: Record<string, number> = { "月卡": 1, "季卡": 2, "年卡": 3 };
+const visiblePublicPlanPrices = [30000, 50000];
+const hiddenPublicPlanIds = new Set([3]);
+const hiddenPublicPlanPrices = new Set([80000]);
 
 function planTier(p: Plan) {
   const legacyId = legacyPlanNameToId[p.name];
@@ -63,6 +66,19 @@ function planDisplayName(p: Plan) {
 function planSortRank(p: Plan) {
   const tierId = planTiers[p.id] ? p.id : legacyPlanNameToId[p.name];
   return tierId ?? p.id;
+}
+
+function isHiddenPublicPlan(p: Plan) {
+  return hiddenPublicPlanIds.has(p.id)
+    || hiddenPublicPlanPrices.has(p.price_cents)
+    || planDisplayName(p) === "Pro 20x";
+}
+
+function visiblePublicPlans(plans: Plan[]) {
+  const sortedPlans = plans.filter((p) => !isHiddenPublicPlan(p)).sort((a, b) => planSortRank(a) - planSortRank(b));
+  return visiblePublicPlanPrices
+    .map((price) => sortedPlans.find((p) => p.price_cents === price))
+    .filter((p): p is Plan => Boolean(p));
 }
 
 function PaymentModal({ apiBase, token, userEmail, trialRemaining, canSkipTrial = true, onClose, onSkipTrial }: Props) {
@@ -86,9 +102,9 @@ function PaymentModal({ apiBase, token, userEmail, trialRemaining, canSkipTrial 
         });
         if (res.ok) {
           const data: Plan[] = await res.json();
-          data.sort((a, b) => planSortRank(a) - planSortRank(b));
-          setPlans(data);
-          const mid = data.find((p) => planDisplayName(p) === "Pro 5x")?.id ?? data[1]?.id ?? data[0]?.id;
+          const visiblePlans = visiblePublicPlans(data);
+          setPlans(visiblePlans);
+          const mid = visiblePlans.find((p) => planDisplayName(p) === "Pro 5x")?.id ?? visiblePlans[1]?.id ?? visiblePlans[0]?.id ?? null;
           setSelectedPlanId(mid);
         }
       } catch {
@@ -139,7 +155,7 @@ function PaymentModal({ apiBase, token, userEmail, trialRemaining, canSkipTrial 
             <span className="trial-badge">剩余试用 {trialRemaining} 次</span>
           )}
           <h2>选择月卡套餐，继续自动加好友</h2>
-          <p className="sub">3 个会员档位，按你的微信窗口数量和任务强度选择</p>
+          <p className="sub">2 个会员档位，按你的微信窗口数量和任务强度选择</p>
         </div>
 
         {/* Plan cards */}
@@ -154,7 +170,7 @@ function PaymentModal({ apiBase, token, userEmail, trialRemaining, canSkipTrial 
             return (
               <div
                 key={p.id}
-                className={`plan-card${isSelected ? " selected" : ""}${isFeatured ? " featured" : ""}`}
+                className={`plan-card${isSelected ? " selected" : ""}`}
                 onClick={() => {
                   setSelectedPlanId(p.id);
                   setOrderInfo(null);
