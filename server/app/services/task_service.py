@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -425,6 +425,18 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
     )
 
 
+def charge_trial_for_success(user: User, db: Session) -> bool:
+    quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).with_for_update().first()
+    if not quota or quota.remaining_count <= 0:
+        return False
+    active_membership = get_current_membership(db, user.id)
+    if active_membership:
+        return False
+    quota.used_count += 1
+    quota.remaining_count -= 1
+    return True
+
+
 def report_result(
     task_id: int,
     target_id: int | None,
@@ -440,16 +452,20 @@ def report_result(
     task = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).with_for_update().first()
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    if task.status != "running":
+    if task.status not in {"running", "finished"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not running")
 
     target: TaskTarget | None = None
     if target_id:
+        target_claim_filter = TaskTarget.claimed_task_id == task_id
+        if task.status == "finished":
+            target_claim_filter = or_(target_claim_filter, TaskTarget.claimed_task_id.is_(None))
         target = (
             db.query(TaskTarget)
             .filter(
                 TaskTarget.id == target_id,
-                TaskTarget.claimed_task_id == task_id,
+                TaskTarget.user_id == user.id,
+                target_claim_filter,
             )
             .with_for_update()
             .first()
@@ -459,26 +475,36 @@ def report_result(
         existing = (
             db.query(TaskResult)
             .filter(TaskResult.task_id == task_id, TaskResult.target_id == target_id)
+            .with_for_update()
             .first()
         )
     else:
         existing = (
             db.query(TaskResult)
             .filter(TaskResult.task_id == task_id, TaskResult.contact_id == contact_id)
+            .with_for_update()
             .first()
         )
     if existing:
+        if event == "success" and existing.result != "success":
+            charged = False
+            if not existing.trial_charged:
+                charged = charge_trial_for_success(user, db)
+                existing.trial_charged = charged
+            existing.result = "success"
+            existing.message = message
+            if target:
+                existing.target_type = target.target_type
+                target.status = result_target_status(event)
+                target.finished_at = datetime.now(timezone.utc)
+                target.result_message = message
+            db.commit()
+            return {"charged": charged, "duplicate": False, "updated": True}
         return {"charged": existing.trial_charged, "duplicate": True}
 
     charged = False
     if event in TRIAL_CHARGE_EVENTS:
-        quota = db.query(TrialQuota).filter(TrialQuota.user_id == user.id).with_for_update().first()
-        if quota and quota.remaining_count > 0:
-            active_membership = get_current_membership(db, user.id)
-            if not active_membership:
-                quota.used_count += 1
-                quota.remaining_count -= 1
-                charged = True
+        charged = charge_trial_for_success(user, db)
 
     result = TaskResult(
         task_id=task_id,

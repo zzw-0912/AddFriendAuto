@@ -26,7 +26,7 @@ def bind_device(user: User, machine_code: str, db: Session) -> Device:
     if user_device:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account already bound to another device",
+            detail="该账号已绑定其他设备，请联系管理员解绑",
         )
 
     device = Device(user_id=user.id, machine_code_hash=machine_hash)
@@ -37,7 +37,7 @@ def bind_device(user: User, machine_code: str, db: Session) -> Device:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Account device binding conflict. Please retry.",
+            detail="设备绑定冲突，请稍后重试",
         ) from exc
     db.refresh(device)
     return device

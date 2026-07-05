@@ -54,6 +54,102 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
             ],
         }
 
+    def _run_fake_worker_once(self, statuses: list[tuple[str, str]]):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        project_dir = Path(temp_dir.name)
+        tree_file = project_dir / "tree.json"
+        tree_file.write_text(
+            json.dumps(
+                {
+                    "root_node": "root",
+                    "nodes": {
+                        "root": {"id": "root", "type": "StartNode", "name": "开始", "config": {}, "children": []},
+                        "input": {"id": "input", "type": "TextInputNode", "name": "输入手机号", "config": {}, "children": []},
+                        "validation": {"id": "validation", "type": "ConditionNode", "name": "判断是否输入正确", "config": {}, "children": []},
+                        "confirm": {"id": "confirm", "type": "MouseClickNode", "name": "点击确定", "config": {}, "children": []},
+                        "close": {"id": "close", "type": "MouseClickNode", "name": "点击叉关闭", "config": {}, "children": []},
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        prepared = worker.PreparedRun(
+            run_dir=project_dir,
+            project_dir=project_dir,
+            tree_file=tree_file,
+            base_tree_file=tree_file,
+            target_type="contact",
+            targets=[worker.PreparedTarget(target_id=11, target_type="contact", target_value="wxid_test")],
+            phone_numbers=["wxid_test"],
+            phone_input_ids={"input"},
+            validation_ids={"validation"},
+            not_found_ids=set(),
+            confirm_click_ids={"confirm"},
+            success_close_ids={"close"},
+            key_failure_ids=set(),
+        )
+
+        class FakeExecutionContext:
+            def __init__(self, project_root: str):
+                self.project_root = project_root
+                self.blackboard = {}
+
+        class FakeEngine:
+            def __init__(self, root_node):
+                self.running = False
+
+            def start(self, context):
+                self.running = True
+                context.blackboard["last_input_text"] = "wxid_test"
+                for node_id, status in statuses:
+                    context._on_node_status(node_id, status)
+                self.running = False
+
+            def get_status(self):
+                return {"running": self.running}
+
+            def stop(self):
+                self.running = False
+
+        class FakeSerializer:
+            @staticmethod
+            def load_from_file(path: str):
+                return object(), None, None
+
+        class FakeLogManager:
+            @staticmethod
+            def instance():
+                return FakeLogManager()
+
+            def flush(self):
+                return []
+
+        class FakeLogLevel:
+            INFO = "INFO"
+
+        class FakeDispatcher:
+            def process_pending(self):
+                return None
+
+        emitted = []
+        logs = []
+        original_emit = worker.emit
+        original_append_worker_log = worker.append_worker_log
+        worker.emit = lambda event, message="", **extra: emitted.append({"event": event, "message": message, **extra})
+        worker.append_worker_log = lambda message, **extra: logs.append({"message": message, **extra})
+        try:
+            outcome = worker.run_autodoor_once(
+                (FakeExecutionContext, FakeEngine, FakeSerializer, FakeLogManager, FakeLogLevel, FakeDispatcher),
+                prepared,
+                {"run_id": "fake-run"},
+            )
+        finally:
+            worker.emit = original_emit
+            worker.append_worker_log = original_append_worker_log
+        return outcome, emitted, logs
+
     def test_patch_keeps_wechat_foreground_and_stabilizes_blackboard_clicks(self):
         temp_dir, tree_file = self._copy_tree()
         self.addCleanup(temp_dir.cleanup)
@@ -105,8 +201,49 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
             tree_data = json.load(f)
 
         root_config = worker.get_config(tree_data["nodes"][tree_data["root_node"]])
+        self.assertEqual(root_config.get("repeat_count"), 0)
         self.assertEqual(root_config.get("repeat_interval_ms"), str(450 * 1000))
         self.assertEqual(root_config.get("repeat_interval_ms_random"), str(150 * 1000))
+
+    def test_multi_target_runs_are_materialized_one_target_at_a_time(self):
+        temp_dir, tree_file = self._copy_tree()
+        self.addCleanup(temp_dir.cleanup)
+
+        task_config = self._task_config()
+        task_config["daily_limit"] = 2
+        task_config["targets"] = [
+            {"target_id": 1, "target_type": "phone", "target_value": "13800138000"},
+            {"target_id": 2, "target_type": "phone", "target_value": "13900139000"},
+        ]
+        patched = worker.patch_tree(tree_file, task_config)
+        base_tree_file = Path(temp_dir.name) / "base_tree.json"
+        shutil.copyfile(tree_file, base_tree_file)
+        prepared = worker.PreparedRun(
+            run_dir=Path(temp_dir.name),
+            project_dir=Path(temp_dir.name),
+            tree_file=tree_file,
+            base_tree_file=base_tree_file,
+            target_type=patched["target_type"],
+            targets=patched["targets"],
+            phone_numbers=patched["phone_numbers"],
+            phone_input_ids=patched["phone_input_ids"],
+            validation_ids=patched["validation_ids"],
+            not_found_ids=patched["not_found_ids"],
+            confirm_click_ids=patched["confirm_click_ids"],
+            success_close_ids=patched["success_close_ids"],
+            key_failure_ids=patched["key_failure_ids"],
+        )
+
+        worker.write_tree_for_single_target(prepared, patched["targets"][1])
+
+        with tree_file.open("r", encoding="utf-8") as f:
+            tree_data = json.load(f)
+
+        root_config = worker.get_config(tree_data["nodes"][tree_data["root_node"]])
+        self.assertEqual(root_config.get("repeat_count"), 0)
+        for node_id in patched["phone_input_ids"]:
+            config = worker.get_config(tree_data["nodes"][node_id])
+            self.assertEqual(config.get("preset_texts"), ["13900139000"])
 
     def test_patch_marks_missing_search_result_invalid_and_recovers_search_box(self):
         temp_dir, tree_file = self._copy_tree()
@@ -183,6 +320,37 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
             self.assertEqual(worker.node_type(node), "MouseClickNode")
             self.assertTrue(worker.contains_any(worker.node_name(node), worker.CLOSE_FRIEND_WINDOW_KEYWORDS))
             self.assertIsNotNone(worker.nearest_start_ancestor(nodes, parents, node_id, ["添加朋友"]))
+
+    def test_pending_invalid_is_overridden_by_confirmed_success(self):
+        outcome, emitted, logs = self._run_fake_worker_once(
+            [
+                ("input", "success"),
+                ("validation", "failure"),
+                ("confirm", "success"),
+                ("close", "success"),
+            ]
+        )
+
+        result_events = [event["event"] for event in emitted if event["event"] in {"success", "invalid", "failed"}]
+        self.assertEqual(result_events, ["success"])
+        self.assertEqual(outcome.success_count, 1)
+        self.assertEqual(outcome.invalid_count, 0)
+        self.assertTrue(any(log["message"] == "pending_invalid_set" for log in logs))
+        self.assertTrue(any(log["message"] == "success_overrides_pending_invalid" for log in logs))
+
+    def test_pending_invalid_is_finalized_without_success(self):
+        outcome, emitted, logs = self._run_fake_worker_once(
+            [
+                ("input", "success"),
+                ("validation", "failure"),
+            ]
+        )
+
+        result_events = [event["event"] for event in emitted if event["event"] in {"success", "invalid", "failed"}]
+        self.assertEqual(result_events, ["invalid"])
+        self.assertEqual(outcome.success_count, 0)
+        self.assertEqual(outcome.invalid_count, 1)
+        self.assertTrue(any(log["message"] == "pending_invalid_finalized" for log in logs))
 
     def test_patch_requires_bound_wechat_window(self):
         temp_dir, tree_file = self._copy_tree()

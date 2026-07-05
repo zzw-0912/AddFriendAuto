@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { authErrorMessage } from "./authMessages";
 import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
 import { useSendCode } from "./useSendCode";
 
@@ -114,7 +115,7 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
         body: JSON.stringify({ email: normalizedEmail, password, machine_code: machineCode }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.detail || "登录失败"); return; }
+      if (!res.ok) { showToast(authErrorMessage(data?.detail, "登录失败")); return; }
       onLogin(data.access_token, normalizedEmail);
       showToast(remember ? "登录成功，下次将自动登录" : "登录成功");
     } catch {
@@ -191,7 +192,7 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
         }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.detail || "注册失败"); return; }
+      if (!res.ok) { showToast(authErrorMessage(data?.detail, "注册失败")); return; }
       onLogin(data.access_token, normalizedEmail);
       showToast("注册成功，即将自动登录");
     } catch {
@@ -286,7 +287,7 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
         body: JSON.stringify({ email: normalizedEmail, code, new_password: newPassword }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.detail || "重置失败"); return; }
+      if (!res.ok) { showToast(authErrorMessage(data?.detail, "重置失败")); return; }
       showToast("密码重置成功，请使用新密码登录");
       onGotoLogin();
     } catch {

@@ -9,14 +9,34 @@ AutoDoor source engine, and prints FriendAuto ScriptEvent JSON lines to stdout.
 from __future__ import annotations
 
 import contextlib
+import email.charset
+import email.errors
+import email.feedparser
+import email.header
+import email.message
+import email.parser
+import email.policy
+import email.utils
+import http.client
+import http.cookiejar
+import http.cookies
 import io
 import json
+import mimetypes
+import netrc
 import os
+import random
 import re
 import shutil
+import ssl
 import sys
 import threading
 import time
+import traceback
+import urllib.error
+import urllib.parse
+import urllib.request
+import urllib.response
 import zlib
 from dataclasses import dataclass
 from datetime import datetime
@@ -48,6 +68,8 @@ SEARCH_RESULT_RETRY_INTERVAL_MS = 500
 BOOTSTRAP_MAX_ATTEMPTS = 2
 BOOTSTRAP_RETRY_MAX_SECONDS = 8.0
 BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
+REPEATED_TARGET_INPUT_ABORT_COUNT = 4
+TARGET_RUN_TIMEOUT_SECONDS = 180.0
 AUTOMATION_LOCK_FILE_NAME = "automation.lock"
 CLIPBOARD_LOCK_FILE_NAME = "clipboard.lock"
 ACCOUNT_AGE_INTERVALS_MS = {
@@ -56,6 +78,12 @@ ACCOUNT_AGE_INTERVALS_MS = {
     "old": (450 * 1000, 150 * 1000),
 }
 DEFAULT_ACCOUNT_AGE_PROFILE = "new"
+DEFAULT_GREETING_TEXT = "你好，很高兴认识你，方便加个微信交流一下吗？"
+MOJIBAKE_HINTS = (
+    "浣", "佸", "涔", "涓", "鍙", "鎴", "鏂", "妯", "瀷", "鎼", "储",
+    "棰", "勮", "椤", "哄", "簭", "鐢", "宠", "濂", "藉", "弸",
+    "涴", "銪", "鑰", "鐩", "逛", "绠", "钀", "ㄣ", "�",
+)
 
 
 @dataclass
@@ -88,6 +116,7 @@ class PreparedRun:
     run_dir: Path
     project_dir: Path
     tree_file: Path
+    base_tree_file: Path
     target_type: str
     targets: list[PreparedTarget]
     phone_numbers: list[str]
@@ -100,6 +129,7 @@ class PreparedRun:
 
 
 _emit_lock = threading.Lock()
+_dll_directory_handles: list[Any] = []
 
 
 class StopRequested(Exception):
@@ -133,16 +163,36 @@ def autodoor_editor_path(source_path: Path) -> str:
 
 
 def local_autodoor_config() -> AutoDoorConfig | None:
+    append_worker_log(
+        "local_autodoor_config scan_start",
+        base_dirs=[str(path) for path in runtime_base_dirs()],
+    )
     for base in runtime_base_dirs():
         for root in [base / "automation", base]:
             source_path = root / "autodoor_behavior_tree"
             project_path = root / "Addfriend"
+            append_worker_log(
+                "local_autodoor_config check",
+                base=str(base),
+                root=str(root),
+                source_path=str(source_path),
+                source_exists=source_path.is_dir(),
+                project_path=str(project_path),
+                project_exists=project_path.is_dir(),
+            )
             if source_path.is_dir() and project_path.is_dir():
+                append_worker_log(
+                    "local_autodoor_config selected",
+                    source_path=str(source_path),
+                    project_path=str(project_path),
+                    editor_executable_path=autodoor_editor_path(source_path),
+                )
                 return AutoDoorConfig(
                     autodoor_source_path=str(source_path),
                     project_path=str(project_path),
                     editor_executable_path=autodoor_editor_path(source_path),
                 )
+    append_worker_log("local_autodoor_config not_found")
     return None
 
 
@@ -166,6 +216,148 @@ def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def has_surrogate_char(text: str) -> bool:
+    return any(0xD800 <= ord(ch) <= 0xDFFF for ch in text)
+
+
+def strip_surrogate_chars(text: str) -> str:
+    if not has_surrogate_char(text):
+        return text
+    return "".join(ch for ch in text if not 0xD800 <= ord(ch) <= 0xDFFF)
+
+
+def count_surrogate_chars(value: Any) -> int:
+    if isinstance(value, str):
+        return sum(1 for ch in value if 0xD800 <= ord(ch) <= 0xDFFF)
+    if isinstance(value, list):
+        return sum(count_surrogate_chars(item) for item in value)
+    if isinstance(value, dict):
+        return sum(count_surrogate_chars(key) + count_surrogate_chars(item) for key, item in value.items())
+    return 0
+
+
+def sanitize_json_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return strip_surrogate_chars(value)
+    if isinstance(value, list):
+        return [sanitize_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            sanitize_json_value(key) if isinstance(key, str) else key: sanitize_json_value(item)
+            for key, item in value.items()
+        }
+    return value
+
+
+def looks_like_mojibake(text: str) -> bool:
+    if not text:
+        return False
+    if has_surrogate_char(text) or "\ufffd" in text:
+        return True
+    hits = sum(1 for hint in MOJIBAKE_HINTS if hint and hint in text)
+    return hits >= 2
+
+
+def repair_mojibake_text(text: str) -> str:
+    if not text:
+        return ""
+    candidates: list[str] = []
+    for encoding in ("gbk", "gb18030"):
+        try:
+            candidates.append(text.encode(encoding, errors="surrogateescape").decode("utf-8"))
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+
+    for candidate in candidates:
+        candidate = strip_surrogate_chars(candidate).strip()
+        if candidate and not looks_like_mojibake(candidate):
+            return candidate
+    return ""
+
+
+def normalize_greeting_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not looks_like_mojibake(text):
+        return strip_surrogate_chars(text)
+
+    repaired = repair_mojibake_text(text)
+    if repaired:
+        append_worker_log(
+            "greeting_text_repaired",
+            had_surrogates=has_surrogate_char(text),
+            original_length=len(text),
+            repaired_length=len(repaired),
+        )
+        return repaired
+
+    append_worker_log(
+        "greeting_text_fallback_default",
+        had_surrogates=has_surrogate_char(text),
+        original_length=len(text),
+    )
+    return DEFAULT_GREETING_TEXT
+
+
+def normalize_task_text_fields(task_config: dict[str, Any]) -> dict[str, Any]:
+    for key in ("greeting_text", "greetingText"):
+        if key in task_config:
+            task_config[key] = normalize_greeting_text(task_config.get(key))
+    return task_config
+
+
+def append_worker_log(message: str, **extra: Any) -> None:
+    try:
+        logs_dir = app_data_dir() / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = logs_dir / "friendauto_worker.txt"
+        payload = {
+            "time": now_iso(),
+            "message": message,
+        }
+        payload.update(extra)
+        payload = sanitize_json_value(payload)
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+    except Exception:
+        pass
+
+
+def masked_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if len(text) <= 4:
+        return "*" * len(text)
+    return f"{text[:2]}***{text[-2:]}"
+
+
+def task_summary(task_config: dict[str, Any]) -> dict[str, Any]:
+    targets = task_config.get("targets")
+    if not isinstance(targets, list):
+        targets = []
+    preview = []
+    for target in targets[:5]:
+        if not isinstance(target, dict):
+            continue
+        target_value = target.get("target_value") or target.get("value") or target.get("phone") or target.get("wechat_id")
+        preview.append(
+            {
+                "target_id": target.get("target_id") or target.get("id"),
+                "target_type": target.get("target_type") or target.get("type"),
+                "target_value": masked_value(target_value),
+            }
+        )
+    return {
+        "run_id": task_config.get("run_id") or task_config.get("task_id"),
+        "slot_id": task_config.get("slot_id"),
+        "target_type": task_config.get("target_type"),
+        "target_count": len(targets),
+        "targets_preview": preview,
+        "has_wechat_binding": bool(task_config.get("wechat_binding")),
+        "account_age_profile": task_config.get("account_age_profile"),
+    }
+
+
 def emit(event: str, message: str = "", **extra: Any) -> None:
     payload = {
         "event": event,
@@ -173,8 +365,12 @@ def emit(event: str, message: str = "", **extra: Any) -> None:
         "timestamp": now_iso(),
     }
     payload.update({key: value for key, value in extra.items() if value is not None})
+    payload = sanitize_json_value(payload)
+    append_worker_log("emit", payload=payload)
     with _emit_lock:
-        print(json.dumps(payload, ensure_ascii=False), flush=True)
+        # Keep stdout ASCII-only so Rust can decode worker events even when
+        # packaged Python falls back to a legacy Windows code page.
+        print(json.dumps(payload, ensure_ascii=True), flush=True)
 
 
 def app_data_dir() -> Path:
@@ -223,6 +419,16 @@ def interprocess_file_lock(lock_file_name: str):
 def load_config() -> AutoDoorConfig:
     config = default_autodoor_config()
     path = app_data_dir() / CONFIG_FILE_NAME
+    append_worker_log(
+        "load_config defaults",
+        config_path=str(path),
+        autodoor_source_path=config.autodoor_source_path,
+        source_exists=Path(config.autodoor_source_path).is_dir(),
+        project_path=config.project_path,
+        project_exists=Path(config.project_path).is_dir(),
+        editor_executable_path=config.editor_executable_path,
+        editor_exists=Path(config.editor_executable_path).is_file() if config.editor_executable_path else False,
+    )
     if not path.exists():
         return config
 
@@ -263,6 +469,15 @@ def load_config() -> AutoDoorConfig:
         )
     ):
         config.editor_executable_path = defaults.editor_executable_path
+    append_worker_log(
+        "load_config final",
+        autodoor_source_path=config.autodoor_source_path,
+        source_exists=Path(config.autodoor_source_path).is_dir(),
+        project_path=config.project_path,
+        project_exists=Path(config.project_path).is_dir(),
+        editor_executable_path=config.editor_executable_path,
+        editor_exists=Path(config.editor_executable_path).is_file() if config.editor_executable_path else False,
+    )
     return config
 
 
@@ -631,16 +846,17 @@ def clear_start_window_handles(nodes: dict[str, dict[str, Any]], node_ids: list[
 def patch_greeting(tree_data: dict[str, Any], node_ids: list[str], greeting_text: str) -> set[str]:
     nodes = tree_data.get("nodes", {})
     greeting_ids: set[str] = set()
+    safe_greeting_text = normalize_greeting_text(greeting_text)
     for node_id in node_ids:
         node = nodes[node_id]
         if node_type(node) != "TextInputNode":
             continue
         if contains_any(node_name(node), GREETING_KEYWORDS):
             greeting_ids.add(node_id)
-            if greeting_text:
+            if safe_greeting_text:
                 config = get_config(node)
                 config["input_mode"] = "预设文本"
-                config["preset_texts"] = [greeting_text]
+                config["preset_texts"] = [safe_greeting_text]
                 config["clear_before_input"] = True
     return greeting_ids
 
@@ -875,14 +1091,26 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         clear_start_window_handles(nodes, active_ids)
 
     root_id = tree_data.get("root_node")
+    repeat_interval_ms = 0
+    repeat_interval_ms_random = 0
     if root_id in nodes:
         root_config = get_config(nodes[root_id])
-        root_config["repeat_count"] = max(0, len(phone_numbers) - 1)
         repeat_interval_ms, repeat_interval_ms_random = parse_add_interval_config(task_config)
+        root_config["repeat_count"] = 0
         root_config["repeat_interval_ms"] = str(repeat_interval_ms)
         root_config["repeat_interval_ms_random"] = str(repeat_interval_ms_random)
 
     greeting_ids = patch_greeting(tree_data, active_ids, str(task_config.get("greeting_text") or "").strip())
+    append_worker_log(
+        "patch_tree task_runtime",
+        target_type=target_type,
+        target_count=len(phone_numbers),
+        repeat_count=0,
+        repeat_interval_ms=repeat_interval_ms,
+        repeat_interval_ms_random=repeat_interval_ms_random,
+        greeting_nodes=sorted(greeting_ids),
+        has_greeting=bool(str(task_config.get("greeting_text") or "").strip()),
+    )
     if not bool(task_config.get("create_tag")):
         patch_skip_tag_flow(tree_data, active_ids, greeting_ids)
         active_ids = reachable_enabled_ids(nodes, root_id)
@@ -912,6 +1140,11 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
 
     rebuild_connections(tree_data)
 
+    surrogate_count = count_surrogate_chars(tree_data)
+    if surrogate_count:
+        append_worker_log("patch_tree sanitized_surrogates", count=surrogate_count)
+        tree_data = sanitize_json_value(tree_data)
+
     with tree_file.open("w", encoding="utf-8") as f:
         json.dump(tree_data, f, ensure_ascii=False, indent=2)
 
@@ -931,6 +1164,12 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
 
 
 def prepare_run(config: AutoDoorConfig, task_config: dict[str, Any]) -> PreparedRun:
+    append_worker_log(
+        "prepare_run start",
+        task=task_summary(task_config),
+        autodoor_source_path=config.autodoor_source_path,
+        project_path=config.project_path,
+    )
     source_project = Path(config.project_path)
     if not source_project.exists():
         raise RuntimeError(f"AutoDoor 项目不存在: {source_project}")
@@ -952,16 +1191,37 @@ def prepare_run(config: AutoDoorConfig, task_config: dict[str, Any]) -> Prepared
     project_dir = run_dir / PROJECT_COPY_NAME
     shutil.copytree(source_project, project_dir)
     tree_file = project_dir / "tree.json"
+    append_worker_log(
+        "prepare_run copied_project",
+        run_dir=str(run_dir),
+        project_dir=str(project_dir),
+        tree_file=str(tree_file),
+    )
 
     patched = patch_tree(
         tree_file=tree_file,
         task_config=task_config,
     )
+    append_worker_log(
+        "prepare_run patched_tree",
+        target_type=patched["target_type"],
+        target_count=len(patched["targets"]),
+        phone_input_ids=list(patched["phone_input_ids"]),
+        validation_ids=list(patched["validation_ids"]),
+        not_found_ids=list(patched["not_found_ids"]),
+        confirm_click_ids=list(patched["confirm_click_ids"]),
+        success_close_ids=list(patched["success_close_ids"]),
+        key_failure_ids=list(patched["key_failure_ids"]),
+    )
+
+    base_tree_file = project_dir / "friendauto_base_tree.json"
+    shutil.copyfile(tree_file, base_tree_file)
 
     return PreparedRun(
         run_dir=run_dir,
         project_dir=project_dir,
         tree_file=tree_file,
+        base_tree_file=base_tree_file,
         target_type=patched["target_type"],
         targets=patched["targets"],
         phone_numbers=patched["phone_numbers"],
@@ -982,6 +1242,41 @@ def dependency_path_matches_python(path: Path) -> bool:
     return any(tag in pyd.name for pyd in pyd_files)
 
 
+def add_runtime_dll_directories(paths: list[Path]) -> None:
+    dll_dirs: list[Path] = []
+    seen: set[str] = set()
+
+    def add_dir(path: Path) -> None:
+        try:
+            resolved = path.resolve()
+        except Exception:
+            resolved = path
+        key = str(resolved).lower()
+        if key not in seen and resolved.is_dir():
+            seen.add(key)
+            dll_dirs.append(resolved)
+
+    for path in paths:
+        add_dir(path)
+        add_dir(path / "cv2")
+        for pattern in ("*.dll", "*.pyd"):
+            for item in path.rglob(pattern):
+                add_dir(item.parent)
+
+    if dll_dirs:
+        existing_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = os.pathsep.join(str(path) for path in dll_dirs) + os.pathsep + existing_path
+
+    if hasattr(os, "add_dll_directory"):
+        for path in dll_dirs:
+            try:
+                _dll_directory_handles.append(os.add_dll_directory(str(path)))
+            except OSError as exc:
+                append_worker_log("add_dll_directory failed", path=str(path), error=str(exc))
+
+    append_worker_log("runtime_dll_directories added", count=len(dll_dirs), paths=[str(path) for path in dll_dirs[:80]])
+
+
 def candidate_dependency_paths(config: AutoDoorConfig) -> list[Path]:
     paths: list[Path] = []
     source = Path(config.autodoor_source_path)
@@ -995,13 +1290,40 @@ def candidate_dependency_paths(config: AutoDoorConfig) -> list[Path]:
     return [path for path in paths if path.exists() and dependency_path_matches_python(path)]
 
 
+def candidate_python_import_paths(dependency_paths: list[Path]) -> list[Path]:
+    paths: list[Path] = []
+    seen: set[str] = set()
+
+    def add_path(path: Path) -> None:
+        key = str(path).lower()
+        if key not in seen and path.exists():
+            seen.add(key)
+            paths.append(path)
+
+    for dependency_path in dependency_paths:
+        add_path(dependency_path / "base_library.zip")
+        add_path(dependency_path)
+    return paths
+
+
 def import_autodoor(config: AutoDoorConfig):
     source = Path(config.autodoor_source_path)
+    dependency_paths = candidate_dependency_paths(config)
+    import_paths = candidate_python_import_paths(dependency_paths)
+    append_worker_log(
+        "import_autodoor start",
+        source=str(source),
+        source_exists=source.exists(),
+        dependency_paths=[str(path) for path in dependency_paths],
+        import_paths=[str(path) for path in import_paths],
+        sys_executable=sys.executable,
+    )
     if not source.exists():
         raise RuntimeError(f"AutoDoor 源码目录不存在: {source}")
+    add_runtime_dll_directories(dependency_paths)
     sys.path.insert(0, str(source))
-    for dependency_path in reversed(candidate_dependency_paths(config)):
-        sys.path.insert(1, str(dependency_path))
+    for import_path in reversed(import_paths):
+        sys.path.insert(1, str(import_path))
 
     try:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -1020,12 +1342,28 @@ def import_autodoor(config: AutoDoorConfig):
             LogManager.set_console_output(False)
     except ModuleNotFoundError as exc:
         missing = exc.name or str(exc)
+        append_worker_log(
+            "import_autodoor module_not_found",
+            missing=missing,
+            error=str(exc),
+            traceback=traceback.format_exc(),
+            sys_path=sys.path[:30],
+        )
         raise RuntimeError(
             "AutoDoor Python 运行依赖缺失或版本不匹配: "
             f"{missing}。请为 FriendAuto 启动 worker 的 Python 安装 "
             f"{Path(config.autodoor_source_path) / 'requirements.txt'}，"
             "或使用与 AutoDoor 打包版一致的 Python 3.11 环境。"
         ) from exc
+    except Exception as exc:
+        append_worker_log(
+            "import_autodoor failed",
+            error=str(exc),
+            traceback=traceback.format_exc(),
+            sys_path=sys.path[:30],
+        )
+        raise
+    append_worker_log("import_autodoor ok", source=str(source))
     return ExecutionContext, BehaviorTreeEngine, Serializer, LogManager, LogLevel, UIUpdateDispatcher
 
 
@@ -1080,6 +1418,59 @@ def should_retry_bootstrap(outcome: RunOutcome, attempt: int) -> bool:
     )
 
 
+def random_interval_ms(base_interval_ms: int, random_range_ms: int) -> int:
+    if random_range_ms <= 0:
+        return max(0, int(base_interval_ms))
+    lower = max(0, int(base_interval_ms) - int(random_range_ms))
+    upper = max(lower, int(base_interval_ms) + int(random_range_ms))
+    return random.randint(lower, upper)
+
+
+def write_tree_for_single_target(prepared: PreparedRun, target: PreparedTarget) -> None:
+    shutil.copyfile(prepared.base_tree_file, prepared.tree_file)
+    with prepared.tree_file.open("r", encoding="utf-8") as f:
+        tree_data = json.load(f)
+
+    nodes: dict[str, dict[str, Any]] = tree_data.get("nodes", {})
+    for node_id in prepared.phone_input_ids:
+        node = nodes.get(node_id)
+        if not node:
+            continue
+        config = get_config(node)
+        config["input_mode"] = "预设文本"
+        config["preset_texts"] = [target.target_value]
+        config["execution_mode"] = "顺序"
+        config.pop("file_path", None)
+        config["save_input_text"] = True
+        config["output_key"] = "last_input_text"
+
+    root_id = tree_data.get("root_node")
+    if root_id in nodes:
+        root_config = get_config(nodes[root_id])
+        root_config["repeat_count"] = 0
+
+    with prepared.tree_file.open("w", encoding="utf-8") as f:
+        json.dump(tree_data, f, ensure_ascii=False, indent=2)
+
+
+def prepared_run_for_target(prepared: PreparedRun, target: PreparedTarget) -> PreparedRun:
+    return PreparedRun(
+        run_dir=prepared.run_dir,
+        project_dir=prepared.project_dir,
+        tree_file=prepared.tree_file,
+        base_tree_file=prepared.base_tree_file,
+        target_type=prepared.target_type,
+        targets=[target],
+        phone_numbers=[target.target_value],
+        phone_input_ids=prepared.phone_input_ids,
+        validation_ids=prepared.validation_ids,
+        not_found_ids=prepared.not_found_ids,
+        confirm_click_ids=prepared.confirm_click_ids,
+        success_close_ids=prepared.success_close_ids,
+        key_failure_ids=prepared.key_failure_ids,
+    )
+
+
 def run_autodoor_once(
     deps: tuple[Any, Any, Any, Any, Any, Any],
     prepared: PreparedRun,
@@ -1109,6 +1500,11 @@ def run_autodoor_once(
         "target_index": -1,
         "current_target": None,
         "awaiting_success_close_key": None,
+        "input_started": False,
+        "last_input_text": "",
+        "same_input_success_count": 0,
+        "abort_current_target": False,
+        "pending_invalid": {},
         "completed": set(),
         "failed": set(),
         "invalid": set(),
@@ -1122,6 +1518,115 @@ def run_autodoor_once(
             return None
         return target.target_id or target_contact_id(target)
 
+    def terminal_result_keys() -> set[int]:
+        return state["completed"] | state["failed"] | state["invalid"]
+
+    def current_target_is_terminal() -> bool:
+        result_key = target_result_key(state["current_target"])
+        return result_key is not None and result_key in terminal_result_keys()
+
+    def target_index_for_value(value: Any) -> int | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        for index, target in enumerate(prepared.targets):
+            if str(target.target_value or "").strip() == text:
+                return index
+        return None
+
+    def current_input_text() -> str:
+        try:
+            return str(context.blackboard.get("last_input_text", "") or "").strip()
+        except Exception:
+            return ""
+
+    def normalized_input_text(value: Any) -> str:
+        return str(value or "").strip()
+
+    def clear_pending_invalid(
+        result_key: int,
+        reason: str,
+        event_name: str = "",
+        target: PreparedTarget | None = None,
+    ) -> dict[str, Any] | None:
+        record = state["pending_invalid"].pop(result_key, None)
+        if not record:
+            return None
+        append_worker_log(
+            "pending_invalid_cleared",
+            run_id=run_id,
+            reason=reason,
+            event=event_name,
+            pending_reason=record.get("reason"),
+            pending_message=record.get("message"),
+            target_index=state["target_index"],
+            target_id=target.target_id if target else None,
+        )
+        if event_name == "success":
+            append_worker_log(
+                "success_overrides_pending_invalid",
+                run_id=run_id,
+                pending_reason=record.get("reason"),
+                pending_message=record.get("message"),
+                target_index=state["target_index"],
+                target_id=target.target_id if target else None,
+            )
+        return record
+
+    def set_pending_invalid(message: str, reason: str, node_id: str = "") -> None:
+        target = state["current_target"]
+        if not target:
+            return
+        result_key = target_result_key(target)
+        if result_key is None:
+            return
+        if current_target_is_terminal():
+            append_worker_log(
+                "pending_invalid_ignored_terminal",
+                run_id=run_id,
+                reason=reason,
+                node_id=node_id,
+                target_index=state["target_index"],
+                target_id=target.target_id,
+            )
+            return
+        state["pending_invalid"][result_key] = {
+            "message": message,
+            "reason": reason,
+            "node_id": node_id,
+        }
+        append_worker_log(
+            "pending_invalid_set",
+            run_id=run_id,
+            reason=reason,
+            node_id=node_id,
+            target_index=state["target_index"],
+            target_id=target.target_id,
+            result_message=message,
+        )
+
+    def finalize_pending_invalid(reason: str) -> bool:
+        target = state["current_target"]
+        if not target:
+            return False
+        result_key = target_result_key(target)
+        if result_key is None or current_target_is_terminal():
+            return False
+        record = state["pending_invalid"].get(result_key)
+        if not record:
+            return False
+        append_worker_log(
+            "pending_invalid_finalized",
+            run_id=run_id,
+            reason=reason,
+            pending_reason=record.get("reason"),
+            target_index=state["target_index"],
+            target_id=target.target_id,
+            result_message=record.get("message"),
+        )
+        mark_terminal("invalid", str(record.get("message") or "当前联系人无效"))
+        return True
+
     def mark_terminal(event_name: str, message: str) -> None:
         target = state["current_target"]
         if not target:
@@ -1130,10 +1635,24 @@ def run_autodoor_once(
         result_key = target_result_key(target)
         if result_key is None:
             return
-        if result_key in state["completed"] or result_key in state["failed"] or result_key in state["invalid"]:
+        if result_key in state["completed"]:
             return
+        if result_key in state["failed"] or result_key in state["invalid"]:
+            if event_name != "success":
+                return
+            append_worker_log(
+                "success_overrides_previous_terminal",
+                run_id=run_id,
+                target_index=state["target_index"],
+                target_id=target.target_id,
+                was_failed=result_key in state["failed"],
+                was_invalid=result_key in state["invalid"],
+            )
+            state["failed"].discard(result_key)
+            state["invalid"].discard(result_key)
         if state.get("awaiting_success_close_key") == result_key:
             state["awaiting_success_close_key"] = None
+        clear_pending_invalid(result_key, f"terminal_{event_name}", event_name, target)
         if event_name == "success":
             state["completed"].add(result_key)
         elif event_name == "invalid":
@@ -1148,15 +1667,45 @@ def run_autodoor_once(
             target_type=target.target_type,
             contact_id=contact_id,
         )
+        append_worker_log(
+            "target_terminal",
+            run_id=run_id,
+            event=event_name,
+            target_index=state["target_index"],
+            target_id=target.target_id,
+            contact_id=contact_id,
+            finished_count=len(terminal_result_keys()),
+            total_targets=len(prepared.targets),
+        )
+        if state["target_index"] < len(prepared.targets) - 1:
+            append_worker_log(
+                "target_waiting_next_interval",
+                run_id=run_id,
+                current_index=state["target_index"],
+                next_index=state["target_index"] + 1,
+                remaining_count=max(0, len(prepared.targets) - state["target_index"] - 1),
+            )
 
-    def advance_current_target() -> None:
-        next_index = min(state["target_index"] + 1, len(prepared.targets) - 1)
-        if next_index < 0 or next_index == state["target_index"]:
+    def set_current_target(next_index: int, reason: str, input_value: str = "") -> None:
+        if next_index < 0 or next_index >= len(prepared.targets):
             return
         state["target_index"] = next_index
         state["current_target"] = prepared.targets[next_index]
         state["awaiting_success_close_key"] = None
+        state["last_input_text"] = ""
+        state["same_input_success_count"] = 0
+        state["abort_current_target"] = False
         target = state["current_target"]
+        append_worker_log(
+            "target_selected",
+            run_id=run_id,
+            reason=reason,
+            target_index=next_index,
+            target_id=target.target_id,
+            target_type=target.target_type,
+            target_value=mask_target(target.target_type, target.target_value),
+            input_value=mask_target(target.target_type, input_value) if input_value else "",
+        )
         emit(
             "progress",
             f"开始处理{target_label(target.target_type)} {mask_target(target.target_type, target.target_value)}",
@@ -1166,6 +1715,88 @@ def run_autodoor_once(
             contact_id=target_contact_id(target),
         )
 
+    def record_target_input(input_value: str) -> None:
+        text = normalized_input_text(input_value)
+        if not text:
+            return
+        state["input_started"] = True
+        if text == state["last_input_text"]:
+            state["same_input_success_count"] = int(state["same_input_success_count"] or 0) + 1
+        else:
+            state["last_input_text"] = text
+            state["same_input_success_count"] = 1
+
+        target = state["current_target"]
+        append_worker_log(
+            "target_input_repeat_check",
+            run_id=run_id,
+            target_index=state["target_index"],
+            target_id=target.target_id if target else None,
+            input_value=mask_target(prepared.target_type, text),
+            same_input_success_count=state["same_input_success_count"],
+            abort_threshold=REPEATED_TARGET_INPUT_ABORT_COUNT,
+            current_done=current_target_is_terminal(),
+        )
+        if (
+            target
+            and not current_target_is_terminal()
+            and int(state["same_input_success_count"] or 0) >= REPEATED_TARGET_INPUT_ABORT_COUNT
+        ):
+            append_worker_log(
+                "target_repeated_input_abort",
+                run_id=run_id,
+                target_index=state["target_index"],
+                target_id=target.target_id,
+                target_type=target.target_type,
+                input_value=mask_target(target.target_type, text),
+                same_input_success_count=state["same_input_success_count"],
+            )
+            mark_terminal("failed", "当前联系人重复输入多次仍未进入下一步，跳过此联系人")
+            state["abort_current_target"] = True
+
+    def advance_current_target(input_value: str = "", reason: str = "target_input_success") -> None:
+        matched_index = target_index_for_value(input_value)
+        append_worker_log(
+            "target_input_status",
+            run_id=run_id,
+            reason=reason,
+            input_value=mask_target(prepared.target_type, input_value) if input_value else "",
+            matched_index=matched_index,
+            current_index=state["target_index"],
+            current_done=current_target_is_terminal(),
+            finished_count=len(terminal_result_keys()),
+            total_targets=len(prepared.targets),
+        )
+
+        if state["target_index"] < 0:
+            set_current_target(matched_index if matched_index is not None else 0, reason, input_value)
+        record_target_input(input_value)
+        if state["abort_current_target"]:
+            return
+
+        if not current_target_is_terminal():
+            append_worker_log(
+                "target_input_ignored_until_terminal",
+                run_id=run_id,
+                input_value=mask_target(prepared.target_type, input_value) if input_value else "",
+                matched_index=matched_index,
+                current_index=state["target_index"],
+            )
+            return
+
+        next_index = state["target_index"] + 1
+        if matched_index is not None and matched_index > state["target_index"]:
+            next_index = matched_index
+        if next_index >= len(prepared.targets):
+            append_worker_log(
+                "target_input_no_remaining_target",
+                run_id=run_id,
+                input_value=mask_target(prepared.target_type, input_value) if input_value else "",
+                current_index=state["target_index"],
+            )
+            return
+        set_current_target(next_index, reason, input_value)
+
     def handle_node_status(node_id: str, status: str) -> None:
         meta = node_meta.get(node_id)
         if not meta:
@@ -1173,12 +1804,16 @@ def run_autodoor_once(
         name = meta["name"]
         ntype = meta["type"]
 
+        if status == "success" and node_id in prepared.phone_input_ids:
+            advance_current_target(current_input_text(), "target_input_node_success")
+            return
+
         if status == "failure" and node_id in prepared.validation_ids:
-            mark_terminal("invalid", "手机号输入校验失败")
+            set_pending_invalid("手机号输入校验失败", "validation_failure", node_id)
             return
 
         if status == "failure" and node_id in prepared.not_found_ids:
-            mark_terminal("invalid", "未找到该用户，继续处理下一条")
+            set_pending_invalid("未找到该用户，继续处理下一条", "not_found_failure", node_id)
             return
 
         if status == "success" and node_id in prepared.confirm_click_ids:
@@ -1207,9 +1842,6 @@ def run_autodoor_once(
 
     def flush_logs() -> None:
         for entry in log_manager.flush():
-            if entry.level == LogLevel.SUCCESS and contains_any(entry.node_name, PHONE_INPUT_KEYWORDS + WECHAT_ID_INPUT_KEYWORDS):
-                advance_current_target()
-                continue
             if entry.level == LogLevel.INFO and entry.message:
                 message = str(entry.message)
                 if contains_any(message, ["异常", "错误", "失败"]):
@@ -1234,6 +1866,8 @@ def run_autodoor_once(
     engine._on_status_change = handle_engine_status
 
     start_time = time.monotonic()
+    if prepared.targets:
+        set_current_target(0, "target_run_start")
     engine.start(context)
 
     try:
@@ -1244,6 +1878,34 @@ def run_autodoor_once(
                 raise StopRequested()
             dispatcher.process_pending()
             flush_logs()
+            if state.get("abort_current_target"):
+                append_worker_log(
+                    "target_abort_stop_engine",
+                    run_id=run_id,
+                    target_index=state["target_index"],
+                    target_id=state["current_target"].target_id if state["current_target"] else None,
+                )
+                engine.stop()
+                break
+            if (
+                state["current_target"]
+                and not current_target_is_terminal()
+                and (time.monotonic() - start_time) >= TARGET_RUN_TIMEOUT_SECONDS
+            ):
+                target = state["current_target"]
+                append_worker_log(
+                    "target_timeout_abort",
+                    run_id=run_id,
+                    target_index=state["target_index"],
+                    target_id=target.target_id,
+                    target_type=target.target_type,
+                    elapsed_seconds=round(time.monotonic() - start_time, 3),
+                    timeout_seconds=TARGET_RUN_TIMEOUT_SECONDS,
+                    input_started=state["input_started"],
+                )
+                mark_terminal("failed", "当前联系人处理超时，跳过此联系人")
+                engine.stop()
+                break
             interruptible_sleep(0.2, run_id)
     except StopRequested:
         if engine.get_status().get("running"):
@@ -1254,13 +1916,27 @@ def run_autodoor_once(
         dispatcher.process_pending()
         flush_logs()
 
+    finalize_pending_invalid("engine_finished")
     total_finished = len(state["completed"]) + len(state["failed"]) + len(state["invalid"])
     if state["current_target"] and total_finished == 0:
         mark_terminal("failed", "任务结束但未捕获到发送成功事件")
         total_finished = len(state["completed"]) + len(state["failed"]) + len(state["invalid"])
+    pending_count = max(0, len(prepared.targets) - total_finished)
+    append_worker_log(
+        "run_outcome",
+        run_id=run_id,
+        phone_started=state["input_started"],
+        total_finished=total_finished,
+        success_count=len(state["completed"]),
+        failed_count=len(state["failed"]),
+        invalid_count=len(state["invalid"]),
+        pending_count=pending_count,
+        total_targets=len(prepared.targets),
+        elapsed_seconds=round(time.monotonic() - start_time, 3),
+    )
 
     return RunOutcome(
-        phone_started=state["target_index"] >= 0,
+        phone_started=state["input_started"],
         total_finished=total_finished,
         success_count=len(state["completed"]),
         failed_count=len(state["failed"]),
@@ -1283,37 +1959,108 @@ def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dic
         run_id=run_id,
     )
 
-    outcome: RunOutcome | None = None
-    for attempt in range(1, BOOTSTRAP_MAX_ATTEMPTS + 1):
-        raise_if_stop_requested(run_id)
-        if attempt > 1:
-            emit("progress", f"正在进行第 {attempt} 次启动尝试", run_id=run_id)
+    total_success = 0
+    total_failed = 0
+    total_invalid = 0
+    total_finished = 0
+    any_phone_started = False
+    base_interval_ms, random_range_ms = parse_add_interval_config(task_config)
 
-        outcome = run_autodoor_once(deps, prepared, task_config)
+    for target_index, target in enumerate(prepared.targets):
         raise_if_stop_requested(run_id)
-        if should_retry_bootstrap(outcome, attempt):
+        append_worker_log(
+            "target_run_begin",
+            run_id=run_id,
+            target_index=target_index,
+            target_id=target.target_id,
+            target_type=target.target_type,
+            target_value=mask_target(target.target_type, target.target_value),
+            total_targets=len(prepared.targets),
+        )
+        write_tree_for_single_target(prepared, target)
+        single_prepared = prepared_run_for_target(prepared, target)
+
+        outcome: RunOutcome | None = None
+        for attempt in range(1, BOOTSTRAP_MAX_ATTEMPTS + 1):
+            raise_if_stop_requested(run_id)
+            if attempt > 1:
+                emit("progress", f"正在重新启动第 {target_index + 1} 条任务", run_id=run_id)
+
+            outcome = run_autodoor_once(deps, single_prepared, task_config)
+            raise_if_stop_requested(run_id)
+            if should_retry_bootstrap(outcome, attempt):
+                emit(
+                    "progress",
+                    "微信窗口首次启动尚未稳定，等待后自动重试一次",
+                    run_id=run_id,
+                )
+                interruptible_sleep(BOOTSTRAP_RETRY_DELAY_SECONDS, run_id)
+                continue
+            break
+
+        if outcome is None:
+            outcome = RunOutcome(False, 0, 0, 0, 0, 0)
+
+        any_phone_started = any_phone_started or outcome.phone_started
+        total_finished += outcome.total_finished
+        total_success += outcome.success_count
+        total_failed += outcome.failed_count
+        total_invalid += outcome.invalid_count
+        append_worker_log(
+            "target_run_end",
+            run_id=run_id,
+            target_index=target_index,
+            target_id=target.target_id,
+            phone_started=outcome.phone_started,
+            total_finished=outcome.total_finished,
+            success_count=outcome.success_count,
+            failed_count=outcome.failed_count,
+            invalid_count=outcome.invalid_count,
+            elapsed_seconds=round(outcome.elapsed_seconds, 3),
+        )
+
+        if not outcome.phone_started and outcome.total_finished == 0:
             emit(
-                "progress",
-                "微信窗口首次启动尚未稳定，等待后自动重试一次",
+                "error",
+                f"第 {target_index + 1} 条任务未进入{target_label(prepared.target_type)}输入步骤，请确认微信已登录且“添加朋友”窗口可正常打开",
                 run_id=run_id,
             )
-            interruptible_sleep(BOOTSTRAP_RETRY_DELAY_SECONDS, run_id)
-            continue
-        break
+            break
 
-    if outcome is None:
-        outcome = RunOutcome(False, 0, 0, 0, 0, 0)
+        if target_index < len(prepared.targets) - 1:
+            interval_ms = random_interval_ms(base_interval_ms, random_range_ms)
+            append_worker_log(
+                "target_outer_wait_next_interval",
+                run_id=run_id,
+                current_index=target_index,
+                next_index=target_index + 1,
+                interval_ms=interval_ms,
+                base_interval_ms=base_interval_ms,
+                random_range_ms=random_range_ms,
+            )
+            emit(
+                "progress",
+                f"第 {target_index + 1} 条已结束，等待下一次加好友",
+                run_id=run_id,
+            )
+            interruptible_sleep(interval_ms / 1000, run_id)
 
-    if not outcome.phone_started and outcome.total_finished == 0:
-        emit(
-            "error",
-            f"任务未进入{target_label(prepared.target_type)}输入步骤，请确认微信已登录且“添加朋友”窗口可正常打开",
-            run_id=run_id,
-        )
+    pending_count = max(0, len(prepared.targets) - total_finished)
+    append_worker_log(
+        "run_overall_outcome",
+        run_id=run_id,
+        phone_started=any_phone_started,
+        total_finished=total_finished,
+        success_count=total_success,
+        failed_count=total_failed,
+        invalid_count=total_invalid,
+        pending_count=pending_count,
+        total_targets=len(prepared.targets),
+    )
 
     emit(
         "finished",
-        f"任务完成，成功 {outcome.success_count} 个，失败 {outcome.failed_count} 个，无效 {outcome.invalid_count} 个",
+        f"任务完成，成功 {total_success} 个，失败 {total_failed} 个，无效 {total_invalid} 个",
         run_id=run_id,
     )
 
@@ -1331,13 +2078,30 @@ def load_node_meta(tree_file: Path) -> dict[str, dict[str, str]]:
 def main() -> int:
     task_config: dict[str, Any] = {}
     raw = sys.stdin.read()
+    append_worker_log(
+        "worker main start",
+        argv=sys.argv,
+        executable=sys.executable,
+        file=__file__,
+        cwd=str(Path.cwd()),
+        raw_bytes=len(raw or ""),
+        runtime_base_dirs=[str(path) for path in runtime_base_dirs()],
+    )
     try:
         task_config = json.loads(raw or "{}")
     except json.JSONDecodeError:
+        append_worker_log("worker invalid_json", raw_preview=(raw or "")[:500])
         emit("error", "FriendAuto 传入的任务配置不是合法 JSON")
         return 1
 
+    task_config = normalize_task_text_fields(task_config)
+    task_surrogate_count = count_surrogate_chars(task_config)
+    if task_surrogate_count:
+        append_worker_log("worker sanitized_task_surrogates", count=task_surrogate_count)
+        task_config = sanitize_json_value(task_config)
+
     try:
+        append_worker_log("worker task_loaded", task=task_summary(task_config))
         config = load_config()
         run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
         raise_if_stop_requested(run_id)
@@ -1351,12 +2115,20 @@ def main() -> int:
             run_autodoor(config, prepared, task_config)
         return 0
     except StopRequested:
+        append_worker_log("worker stop_requested", task=task_summary(task_config))
         emit("exited", "任务已停止", run_id=str(task_config.get("run_id") or task_config.get("task_id") or ""))
         return 130
     except KeyboardInterrupt:
+        append_worker_log("worker keyboard_interrupt", task=task_summary(task_config))
         emit("exited", "任务已停止")
         return 130
     except Exception as exc:
+        append_worker_log(
+            "worker exception",
+            error=str(exc),
+            traceback=traceback.format_exc(),
+            task=task_summary(task_config),
+        )
         emit("error", str(exc), run_id=str(task_config.get("run_id") or ""))
         return 1
 

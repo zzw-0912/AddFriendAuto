@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { authErrorMessage } from "./authMessages";
 import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
 
 export function useSendCode(apiBase: string, showToast: (message: string) => void) {
@@ -25,7 +26,7 @@ export function useSendCode(apiBase: string, showToast: (message: string) => voi
       });
       const data = await res.json();
       if (!res.ok) {
-        showToast(data.detail || "发送失败");
+        showToast(authErrorMessage(data?.detail, "发送失败"));
         setCountdown(0);
         return;
       }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNetworkStatus } from "./useNetworkStatus";
-import { loadTaskSlotConfig, loadWeChatBindings, saveTaskSlotConfig } from "./localSettings";
+import { loadTaskSlotConfig, loadWeChatBindings, normalizeTaskDefaults, saveTaskSlotConfig, saveWeChatBindings } from "./localSettings";
 import { ACCOUNT_AGE_PROFILE_OPTIONS, type AccountAgeProfile, type TargetType, type TaskDefaults, type UserStatus, type WeChatWindowBinding } from "./types";
 
 interface Props {
@@ -141,7 +141,9 @@ function TaskPanel({
   const logEndRef = useRef<HTMLDivElement>(null);
   const taskIdRef = useRef<number | null>(null);
   const isFinishingRef = useRef(false);
+  const hasRunErrorRef = useRef(false);
   const processedResultKeysRef = useRef<Set<string>>(new Set());
+  const pendingResultReportsRef = useRef<Set<Promise<ResultResponse | null>>>(new Set());
   const lastLogTextRef = useRef("");
   const lastTrialRemainingRef = useRef<number | null>(null);
   const startDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,6 +180,10 @@ function TaskPanel({
     addUniqueLog(accessNotice(access), remaining > 0 ? "info" : "error");
   }, [addUniqueLog]);
 
+  const writeClientLog = useCallback((message: string) => {
+    void invoke("write_client_log", { message }).catch(() => {});
+  }, []);
+
   const reportResult = useCallback(async (
     contactId: string | number | undefined,
     targetId: string | number | undefined,
@@ -185,35 +191,68 @@ function TaskPanel({
     message: string,
   ): Promise<ResultResponse | null> => {
     const tid = taskIdRef.current;
-    if (!tid || (!targetId && !contactId)) return null;
+    if (!tid || (!targetId && !contactId)) {
+      writeClientLog(`result_report_skip task_id=${tid || ""} target_id=${targetId || ""} contact_id=${contactId || ""} event=${event}`);
+      return null;
+    }
+    const payload = {
+      target_id: targetId ? Number(targetId) : undefined,
+      contact_id: contactId ? Number(contactId) : undefined,
+      event,
+      message,
+    };
+    writeClientLog(`result_report_start task_id=${tid} target_id=${payload.target_id || ""} contact_id=${payload.contact_id || ""} event=${event}`);
     try {
       const res = await fetch(`${apiBase}/tasks/${tid}/results`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          target_id: targetId ? Number(targetId) : undefined,
-          contact_id: contactId ? Number(contactId) : undefined,
-          event,
-          message,
-        }),
+        body: JSON.stringify(payload),
       });
+      const responseText = await res.text();
+      writeClientLog(
+        `result_report_response task_id=${tid} target_id=${payload.target_id || ""} event=${event} status=${res.status} ok=${res.ok} body=${responseText.slice(0, 500)}`,
+      );
       if (!res.ok) return null;
-      return await res.json() as ResultResponse;
-    } catch {
+      return JSON.parse(responseText || "{}") as ResultResponse;
+    } catch (err) {
+      writeClientLog(`result_report_error task_id=${tid} target_id=${payload.target_id || ""} event=${event} error=${String(err)}`);
       return null;
     }
-  }, [apiBase, token]);
+  }, [apiBase, token, writeClientLog]);
+
+  const enqueueResultReport = useCallback((
+    contactId: string | number | undefined,
+    targetId: string | number | undefined,
+    event: string,
+    message: string,
+  ) => {
+    const reportPromise = reportResult(contactId, targetId, event, message);
+    pendingResultReportsRef.current.add(reportPromise);
+    void reportPromise.finally(() => {
+      pendingResultReportsRef.current.delete(reportPromise);
+    });
+    return reportPromise;
+  }, [reportResult]);
+
+  const waitForPendingResultReports = useCallback(async () => {
+    const pending = Array.from(pendingResultReportsRef.current);
+    if (!pending.length) return;
+    await Promise.allSettled(pending);
+  }, []);
 
   const finishCurrentTask = useCallback(async () => {
     const tid = taskIdRef.current;
     if (!tid || isFinishingRef.current) return;
     isFinishingRef.current = true;
+    await waitForPendingResultReports();
     try {
       await fetch(`${apiBase}/tasks/${tid}/finish`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
+      writeClientLog(`task_finish_response task_id=${tid} ok=true`);
     } catch {
+      writeClientLog(`task_finish_error task_id=${tid}`);
       addUniqueLog("任务状态同步失败，请稍后刷新", "error");
     }
     setTaskId(null);
@@ -222,7 +261,7 @@ function TaskPanel({
     isFinishingRef.current = false;
     const latestStatus = asAccessSnapshot(await onStatusChange({ force: true }));
     addAccessLog(latestStatus);
-  }, [addAccessLog, addUniqueLog, apiBase, onStatusChange, token]);
+  }, [addAccessLog, addUniqueLog, apiBase, onStatusChange, token, waitForPendingResultReports, writeClientLog]);
 
   const refreshAccessLog = useCallback(async () => {
     const latestStatus = asAccessSnapshot(await onStatusChange({ force: true }));
@@ -245,6 +284,14 @@ function TaskPanel({
       if (eventRunId && !currentRunId) return;
 
       if (data.event === "exited") {
+        if (hasRunErrorRef.current) {
+          if (taskIdRef.current) {
+            finishCurrentTask();
+          } else {
+            setIsRunning(false);
+          }
+          return;
+        }
         addUniqueLog("任务已完成", "info");
         if (taskIdRef.current) {
           finishCurrentTask();
@@ -270,26 +317,31 @@ function TaskPanel({
           break;
         case "success":
           processedResultKeysRef.current.add(resultKey);
-          void reportResult(data.contact_id, data.target_id, data.event, msg).then((result) => {
-            if (result?.charged) void refreshAccessLog();
+          void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then(() => {
+            void refreshAccessLog();
           });
           break;
         case "failed":
           processedResultKeysRef.current.add(resultKey);
-          void reportResult(data.contact_id, data.target_id, data.event, msg).then((result) => {
+          void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then((result) => {
             if (result?.charged) void refreshAccessLog();
           });
           break;
         case "invalid":
           processedResultKeysRef.current.add(resultKey);
-          void reportResult(data.contact_id, data.target_id, data.event, msg).then((result) => {
+          void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then((result) => {
             if (result?.charged) void refreshAccessLog();
           });
           break;
         case "error":
+          hasRunErrorRef.current = true;
           addUniqueLog("任务运行异常，请稍后重试", "error");
           break;
         case "finished":
+          if (hasRunErrorRef.current) {
+            finishCurrentTask();
+            break;
+          }
           addUniqueLog("任务已完成", "info");
           finishCurrentTask();
           break;
@@ -299,7 +351,7 @@ function TaskPanel({
     } catch {
       addUniqueLog("AI模型正在搜索中", "normal");
     }
-  }, [addUniqueLog, finishCurrentTask, refreshAccessLog, reportResult, slotId]);
+  }, [addUniqueLog, enqueueResultReport, finishCurrentTask, refreshAccessLog, slotId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -376,7 +428,12 @@ function TaskPanel({
   };
 
   const handleSaveConfig = () => {
-    const nextConfig = { targetType, dailyLimit, accountAgeProfile, createTag: false, greetingText, greetingPresets };
+    const nextConfig = normalizeTaskDefaults(
+      { targetType, dailyLimit, accountAgeProfile, createTag: false, greetingText, greetingPresets },
+      taskDefaults,
+    );
+    setGreetingText(nextConfig.greetingText);
+    setGreetingPresets(nextConfig.greetingPresets);
     saveTaskSlotConfig(slotId, nextConfig);
     addUniqueLog("任务配置已保存", "success");
     showToast(`微信${slotId}配置已保存`);
@@ -391,15 +448,18 @@ function TaskPanel({
       };
     }
 
-    const bindingAlive = await invoke<boolean>("validate_wechat_binding", { binding: wechatBinding });
-    if (!bindingAlive) {
+    try {
+      const refreshedBinding = await invoke<WeChatWindowBinding>("ensure_wechat_binding", { binding: wechatBinding });
+      const bindings = loadWeChatBindings();
+      bindings[String(slotId)] = { ...wechatBinding, ...refreshedBinding, slotId };
+      saveWeChatBindings(bindings);
+      return { binding: bindings[String(slotId)], message: null };
+    } catch (err) {
       return {
         binding: null,
-        message: `微信${slotId}绑定窗口已失效，请重新绑定后再开始任务`,
+        message: String(err || `微信${slotId}自动打开失败，请重新绑定后再开始任务`),
       };
     }
-
-    return { binding: wechatBinding, message: null };
   };
 
   const runStartTask = async () => {
@@ -418,15 +478,16 @@ function TaskPanel({
     setLogs([]);
     lastLogTextRef.current = "";
     lastTrialRemainingRef.current = null;
+    hasRunErrorRef.current = false;
     processedResultKeysRef.current.clear();
 
     try {
-      addUniqueLog("正在检查微信窗口", "info");
-      const bindingAlive = await invoke<boolean>("validate_wechat_binding", { binding: wechatBinding });
-      if (!bindingAlive) {
-        addUniqueLog(`微信${slotId}窗口已失效，请重新绑定`, "error");
-        return;
-      }
+      const safeConfig = normalizeTaskDefaults(
+        { targetType, dailyLimit, accountAgeProfile, createTag: false, greetingText, greetingPresets },
+        taskDefaults,
+      );
+
+      addUniqueLog("正在打开微信中", "info");
 
       addUniqueLog("正在同步免费额度", "info");
       const res = await fetch(`${apiBase}/tasks/start-check`, {
@@ -437,7 +498,7 @@ function TaskPanel({
           target_type: targetType,
           daily_limit: dailyLimit,
           create_tag: false,
-          greeting_text: greetingText || null,
+          greeting_text: safeConfig.greetingText || null,
         }),
       });
       const data = await res.json();
@@ -502,7 +563,7 @@ function TaskPanel({
         daily_limit: dailyLimit,
         account_age_profile: accountAgeProfile,
         create_tag: false,
-        greeting_text: greetingText,
+        greeting_text: safeConfig.greetingText,
         wechat_binding: wechatBinding,
         targets: claimData.targets,
       };
@@ -527,9 +588,9 @@ function TaskPanel({
       onOpenPayment();
       return;
     }
-    const bindingCheck = await checkWechatBinding();
-    if (!bindingCheck.binding) {
-      const message = bindingCheck.message || `请先在“我的”页面绑定微信${slotId}窗口`;
+    const wechatBinding = loadWeChatBindings()[String(slotId)];
+    if (!wechatBinding) {
+      const message = `微信${slotId}还没有绑定窗口，请先去绑定后再开始任务`;
       addUniqueLog(message, "error");
       setBindingPromptMessage(message);
       return;
@@ -555,7 +616,7 @@ function TaskPanel({
     if (startCountdown > 0) return;
     let remaining = START_DELAY_SECONDS;
     setStartCountdown(remaining);
-    addUniqueLog(`请在 ${START_DELAY_SECONDS} 秒内切换到微信${slotId}窗口`, "info");
+    addUniqueLog(`${START_DELAY_SECONDS} 秒后将自动打开微信${slotId}并开始任务`, "info");
     startCountdownTimerRef.current = setInterval(() => {
       remaining -= 1;
       setStartCountdown(Math.max(remaining, 0));
@@ -563,7 +624,9 @@ function TaskPanel({
     startDelayTimerRef.current = setTimeout(() => {
       clearStartDelay();
       setShowAutomationPrompt(false);
-      runStartTask();
+      window.setTimeout(() => {
+        runStartTask();
+      }, 180);
     }, START_DELAY_SECONDS * 1000);
   };
 
@@ -663,7 +726,7 @@ function TaskPanel({
             </button>
             {!isRunning ? (
               <button className="btn-start" onClick={handleStartClick} disabled={!isOnline || startCountdown > 0} title={!isOnline ? "网络已断开，无法启动任务" : ""}>
-                {startCountdown > 0 ? "等待切换..." : "开始任务"}
+                {startCountdown > 0 ? "等待启动..." : "开始任务"}
               </button>
             ) : (
               <button className="btn-stop" onClick={handleStop}>停止任务</button>
@@ -718,14 +781,14 @@ function TaskPanel({
             </div>
             <h3>自动化将控制鼠标和键盘</h3>
             <ol className="automation-warning-list">
-              <li>请先打开微信主窗口（不必手动打开「添加朋友」）</li>
-              <li>点击确认后有 5 秒切换到微信</li>
-              <li>运行期间请勿操作浏览器或鼠标</li>
+              <li>点击确认后有 5 秒准备时间</li>
+              <li>倒计时结束后会自动打开或唤起已绑定的微信窗口</li>
+              <li>运行期间请不要操作鼠标和键盘</li>
             </ol>
             {startCountdown > 0 && (
               <div className="automation-countdown">
                 <strong>{startCountdown}</strong>
-                <span>秒后开始，请切换到微信{slotId}主窗口</span>
+                <span>秒后自动打开微信{slotId}并启动</span>
               </div>
             )}
             <div className="automation-warning-actions">

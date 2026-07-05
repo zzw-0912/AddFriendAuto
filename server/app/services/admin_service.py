@@ -16,7 +16,6 @@ from app.models.order import Order
 from app.models.plan import Plan
 from app.models.task import Task
 from app.models.task_result import TaskResult
-from app.models.task_target import TaskTarget
 from app.models.trial_quota import TrialQuota
 from app.models.user import User
 from app.schemas.admin import (
@@ -360,8 +359,10 @@ def delete_user(user_id: int, admin_user_id: int, db: Session) -> dict:
     else:
         deleted_counts["task_results"] = 0
 
+    # task_targets is a global target pool; deleting a user must not clear it.
+    deleted_counts["task_targets"] = 0
+
     for model, key in (
-        (TaskTarget, "task_targets"),
         (Task, "tasks"),
         (Feedback, "feedbacks"),
         (Order, "orders"),

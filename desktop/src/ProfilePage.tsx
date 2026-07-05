@@ -142,6 +142,7 @@ function ProfilePage({
         pid: selectedWindow.pid,
         title: selectedWindow.title,
         displayName: selectedWindow.displayName,
+        executablePath: selectedWindow.executablePath,
         boundAt: new Date().toISOString(),
       },
     };

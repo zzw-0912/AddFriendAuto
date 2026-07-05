@@ -25,6 +25,7 @@ export interface WeChatWindowInfo {
   pid: number;
   title: string;
   processName: string;
+  executablePath?: string;
   displayName: string;
 }
 
@@ -34,6 +35,7 @@ export interface WeChatWindowBinding {
   pid: number;
   title: string;
   displayName: string;
+  executablePath?: string;
   boundAt: string;
 }
 

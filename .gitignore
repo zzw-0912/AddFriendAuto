@@ -11,3 +11,4 @@ dist/
 uploads/
 logs/
 *.tsbuildinfo
+desktop/src-tauri/resources/

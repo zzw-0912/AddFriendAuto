@@ -35,7 +35,7 @@ async def send_code(email: str, db: Session) -> dict:
     if recent:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Please wait 60 seconds before requesting a new code",
+            detail="请等待 60 秒后再重新获取验证码",
         )
 
     code = str(random.randint(100000, 999999))
@@ -52,7 +52,7 @@ async def send_code(email: str, db: Session) -> dict:
     from app.services.email_service import send_verification_email
     asyncio.create_task(send_verification_email(email, code))
 
-    result = {"message": "Code sent", "email": email}
+    result = {"message": "验证码已发送", "email": email}
     if settings.debug:
         result["dev_code"] = code
     if settings.debug and email == "test@friendauto.com":
@@ -76,7 +76,7 @@ def _bind_device(user_id: int, machine_code: str, db: Session):
     if user_device:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account already bound to another device. Contact admin to unbind.",
+            detail="该账号已绑定其他设备，请联系管理员解绑",
         )
 
     device = Device(user_id=user_id, machine_code_hash=mc_hash)
@@ -156,16 +156,16 @@ def login(email: str, password: str, machine_code: str, db: Session) -> dict:
 
     user = db.query(User).filter(User.email == email).with_for_update().first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="账号不存在，请先注册")
 
     if not user.password_hash:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No password set. Please use 'Find Account' to set your password.",
+            detail="该账号还未设置密码，请通过找回密码设置新密码",
         )
 
     if not verify_password(password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect password")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="密码错误，请重新输入")
 
     is_test_account = settings.debug and email == "test@friendauto.com"
     if not is_test_account:
@@ -178,7 +178,7 @@ def login(email: str, password: str, machine_code: str, db: Session) -> dict:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Account device binding conflict. Please retry.",
+            detail="设备绑定冲突，请稍后重试",
         ) from exc
 
     result = _issue_token(user.id, email)
@@ -217,11 +217,11 @@ def register(
                 break
 
     if not valid:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired code")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
 
     existing = db.query(User).filter(User.email == email).first()
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该邮箱已注册，请直接登录")
 
     normalized_referral_code = _normalize_referral_code(referral_code)
     referrer = None
@@ -254,7 +254,7 @@ def register(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered or device already bound.",
+            detail="该邮箱已注册或设备已绑定，请检查后重试",
         ) from exc
 
     result = _issue_token(user.id, email)
@@ -282,26 +282,26 @@ def reset_password(email: str, code: str, new_password: str, db: Session) -> dic
             break
 
     if not valid:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired code")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
 
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="账号不存在，请先注册")
 
     user.password_hash = hash_password(new_password)
     db.commit()
 
-    return {"message": "Password reset successfully"}
+    return {"message": "密码重置成功"}
 
 
 def refresh(token: str, db: Session) -> dict:
     payload = decode_access_token(token)
     if payload is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录状态已失效，请重新登录")
 
     user = db.query(User).filter(User.id == payload.get("sub")).first()
     if not user or user.status != "active":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号不存在或已被停用")
 
     new_token = create_access_token({"sub": str(user.id), "email": user.email})
 

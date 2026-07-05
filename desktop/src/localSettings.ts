@@ -9,12 +9,44 @@ import {
 } from "./types";
 
 const PRESET_COUNT = 3;
+const MOJIBAKE_HINTS = [
+  "浣",
+  "锛",
+  "緢",
+  "楂",
+  "叴",
+  "瘑",
+  "鍔",
+  "寰",
+  "淇",
+  "娴",
+  "ㄣ",
+  "�",
+];
+
+function stripInvalidSurrogates(value: string): string {
+  return value.replace(/[\uD800-\uDFFF]/g, "");
+}
+
+function looksLikeMojibake(value: string): boolean {
+  const text = stripInvalidSurrogates(value).trim();
+  if (!text) return false;
+  const hits = MOJIBAKE_HINTS.reduce((count, hint) => count + (text.includes(hint) ? 1 : 0), 0);
+  return hits >= 2 || text.includes("�");
+}
+
+function normalizeGreetingString(value: unknown, fallback = ""): string {
+  if (typeof value !== "string") return fallback;
+  const text = stripInvalidSurrogates(value).trim();
+  if (!text) return "";
+  return looksLikeMojibake(text) ? fallback : text;
+}
 
 function normalizeGreetingPresets(value: unknown, fallback: TaskDefaults["greetingPresets"]): string[] {
   const source = Array.isArray(value) ? value : [];
   return Array.from({ length: PRESET_COUNT }, (_, index) => {
     const preset = source[index];
-    return typeof preset === "string" ? preset.trim() : fallback[index] || "";
+    return normalizeGreetingString(preset, fallback[index] || "");
   });
 }
 
@@ -60,14 +92,19 @@ export function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null | u
     fallback.accountAgeProfile,
     legacyDefaults?.addIntervalMinutes ?? legacyDefaults?.add_interval_minutes,
   );
+  const greetingPresets = normalizeGreetingPresets(defaults?.greetingPresets, fallback.greetingPresets);
+  const fallbackGreetingText = normalizeGreetingString(fallback.greetingText, "");
+  const greetingTextFallback = greetingPresets.find(Boolean) || fallbackGreetingText;
 
   return {
     targetType: "contact",
     dailyLimit: normalizeDailyLimit(legacyDefaults, accountAgeProfile),
     accountAgeProfile,
     createTag: false,
-    greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : fallback.greetingText,
-    greetingPresets: normalizeGreetingPresets(defaults?.greetingPresets, fallback.greetingPresets),
+    greetingText: typeof defaults?.greetingText === "string"
+      ? normalizeGreetingString(defaults.greetingText, greetingTextFallback)
+      : fallbackGreetingText,
+    greetingPresets,
   };
 }
 
