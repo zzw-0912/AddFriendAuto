@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { authErrorMessage } from "./authMessages";
 import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
+import { isClientUpdateRequiredError } from "./api";
 import { useSendCode } from "./useSendCode";
 
 interface Props {
@@ -118,7 +119,8 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
       if (!res.ok) { showToast(authErrorMessage(data?.detail, "登录失败")); return; }
       onLogin(data.access_token, normalizedEmail);
       showToast(remember ? "登录成功，下次将自动登录" : "登录成功");
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) return;
       showToast("无法连接服务器");
     } finally {
       setLoading(false);
@@ -195,7 +197,8 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
       if (!res.ok) { showToast(authErrorMessage(data?.detail, "注册失败")); return; }
       onLogin(data.access_token, normalizedEmail);
       showToast("注册成功，即将自动登录");
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) return;
       showToast("无法连接服务器");
     } finally {
       setLoading(false);
@@ -290,7 +293,8 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
       if (!res.ok) { showToast(authErrorMessage(data?.detail, "重置失败")); return; }
       showToast("密码重置成功，请使用新密码登录");
       onGotoLogin();
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) return;
       showToast("无法连接服务器");
     } finally {
       setLoading(false);

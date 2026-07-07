@@ -54,7 +54,14 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
             ],
         }
 
-    def _run_fake_worker_once(self, statuses: list[tuple[str, str]]):
+    def _run_fake_worker_once(
+        self,
+        statuses: list[tuple[str, str]],
+        *,
+        not_found_ids: set[str] | None = None,
+        close_func=None,
+        already_friend_func=None,
+    ):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         project_dir = Path(temp_dir.name)
@@ -67,6 +74,7 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
                         "root": {"id": "root", "type": "StartNode", "name": "开始", "config": {}, "children": []},
                         "input": {"id": "input", "type": "TextInputNode", "name": "输入手机号", "config": {}, "children": []},
                         "validation": {"id": "validation", "type": "ConditionNode", "name": "判断是否输入正确", "config": {}, "children": []},
+                        "not_found": {"id": "not_found", "type": "ImageConditionNode", "name": "添加到通讯录", "config": {}, "children": []},
                         "confirm": {"id": "confirm", "type": "MouseClickNode", "name": "点击确定", "config": {}, "children": []},
                         "close": {"id": "close", "type": "MouseClickNode", "name": "点击叉关闭", "config": {}, "children": []},
                     },
@@ -85,7 +93,7 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
             phone_numbers=["wxid_test"],
             phone_input_ids={"input"},
             validation_ids={"validation"},
-            not_found_ids=set(),
+            not_found_ids=set(not_found_ids or []),
             confirm_click_ids={"confirm"},
             success_close_ids={"close"},
             key_failure_ids=set(),
@@ -137,8 +145,12 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
         logs = []
         original_emit = worker.emit
         original_append_worker_log = worker.append_worker_log
+        original_close_add_friend_window = worker.close_add_friend_window
+        original_detect_already_friend_screen = worker.detect_already_friend_screen
         worker.emit = lambda event, message="", **extra: emitted.append({"event": event, "message": message, **extra})
         worker.append_worker_log = lambda message, **extra: logs.append({"message": message, **extra})
+        worker.close_add_friend_window = close_func or (lambda *args, **kwargs: False)
+        worker.detect_already_friend_screen = already_friend_func or (lambda *args, **kwargs: False)
         try:
             outcome = worker.run_autodoor_once(
                 (FakeExecutionContext, FakeEngine, FakeSerializer, FakeLogManager, FakeLogLevel, FakeDispatcher),
@@ -148,6 +160,8 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
         finally:
             worker.emit = original_emit
             worker.append_worker_log = original_append_worker_log
+            worker.close_add_friend_window = original_close_add_friend_window
+            worker.detect_already_friend_screen = original_detect_already_friend_screen
         return outcome, emitted, logs
 
     def test_patch_keeps_wechat_foreground_and_stabilizes_blackboard_clicks(self):
@@ -293,6 +307,28 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
         ]
         self.assertGreater(len(add_friend_start_ids), 0)
 
+    def test_patch_disables_brittle_input_validation_to_allow_search(self):
+        temp_dir, tree_file = self._copy_tree()
+        self.addCleanup(temp_dir.cleanup)
+
+        patched = worker.patch_tree(tree_file, self._task_config())
+
+        with tree_file.open("r", encoding="utf-8") as f:
+            tree_data = json.load(f)
+
+        nodes = tree_data["nodes"]
+        validation_nodes = [
+            node_id
+            for node_id, node in nodes.items()
+            if worker.node_type(node) == "VariableConditionNode"
+            and worker.contains_any(worker.node_name(node), worker.VALIDATION_KEYWORDS)
+        ]
+        self.assertGreater(len(validation_nodes), 0)
+        self.assertEqual(set(patched["validation_ids"]), set())
+        self.assertGreater(len(patched["disabled_validation_ids"]), 0)
+        for node_id in validation_nodes:
+            self.assertFalse(worker.is_node_enabled(nodes[node_id]), node_id)
+
     def test_success_is_reported_after_closing_add_friend_window(self):
         temp_dir, tree_file = self._copy_tree()
         self.addCleanup(temp_dir.cleanup)
@@ -351,6 +387,58 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
         self.assertEqual(outcome.success_count, 0)
         self.assertEqual(outcome.invalid_count, 1)
         self.assertTrue(any(log["message"] == "pending_invalid_finalized" for log in logs))
+
+    def test_repeated_input_abort_closes_add_friend_window_and_marks_failed(self):
+        close_calls = []
+
+        outcome, emitted, logs = self._run_fake_worker_once(
+            [
+                ("input", "success"),
+                ("input", "success"),
+                ("input", "success"),
+                ("input", "success"),
+            ],
+            close_func=lambda task_config, run_id, reason: close_calls.append(reason) or True,
+        )
+
+        result_events = [event["event"] for event in emitted if event["event"] in {"success", "invalid", "failed"}]
+        self.assertEqual(result_events, ["failed"])
+        self.assertEqual(outcome.failed_count, 1)
+        self.assertIn("repeated_input_abort", close_calls)
+        self.assertTrue(any(log["message"] == "target_repeated_input_abort" for log in logs))
+
+    def test_already_friend_screen_is_success_after_close(self):
+        outcome, emitted, logs = self._run_fake_worker_once(
+            [
+                ("input", "success"),
+                ("not_found", "failure"),
+                ("close", "success"),
+            ],
+            not_found_ids={"not_found"},
+            already_friend_func=lambda *args, **kwargs: True,
+        )
+
+        result_events = [event["event"] for event in emitted if event["event"] in {"success", "invalid", "failed"}]
+        self.assertEqual(result_events, ["success"])
+        self.assertEqual(outcome.success_count, 1)
+        self.assertEqual(outcome.invalid_count, 0)
+        self.assertTrue(any(log["message"] == "already_friend_screen_detected" for log in logs))
+
+    def test_not_found_is_invalid_after_cleanup_close(self):
+        outcome, emitted, logs = self._run_fake_worker_once(
+            [
+                ("input", "success"),
+                ("not_found", "failure"),
+                ("close", "success"),
+            ],
+            not_found_ids={"not_found"},
+            already_friend_func=lambda *args, **kwargs: False,
+        )
+
+        result_events = [event["event"] for event in emitted if event["event"] in {"success", "invalid", "failed"}]
+        self.assertEqual(result_events, ["invalid"])
+        self.assertEqual(outcome.invalid_count, 1)
+        self.assertTrue(any(log["message"] == "pending_invalid_close_detected" for log in logs))
 
     def test_patch_requires_bound_wechat_window(self):
         temp_dir, tree_file = self._copy_tree()

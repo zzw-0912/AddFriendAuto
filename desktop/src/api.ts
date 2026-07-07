@@ -23,6 +23,16 @@ export interface ClientUpdateRequiredPayload {
   updated_at?: string | null;
 }
 
+export class ClientUpdateRequiredError extends Error {
+  payload: ClientUpdateRequiredPayload;
+
+  constructor(payload: ClientUpdateRequiredPayload) {
+    super(payload.message || payload.detail || "当前软件版本已停用，请下载最新版本后继续使用。");
+    this.name = "ClientUpdateRequiredError";
+    this.payload = payload;
+  }
+}
+
 type ClientUpdateRequiredHandler = (payload: ClientUpdateRequiredPayload) => void;
 
 const CLIENT_VERSION_HEADER = "X-Client-Version";
@@ -51,7 +61,8 @@ export function installClientUpdateInterceptor(
     const response = await originalFetch!(input, nextInit);
 
     if (shouldAttachVersion && response.status === 426) {
-      void notifyClientUpdateRequired(response);
+      const payload = await notifyClientUpdateRequired(response);
+      throw new ClientUpdateRequiredError(payload);
     }
 
     return response;
@@ -87,16 +98,64 @@ function getAbsoluteUrl(input: RequestInfo | URL): string | null {
   return null;
 }
 
-async function notifyClientUpdateRequired(response: Response) {
+function fallbackUpdatePayload(): ClientUpdateRequiredPayload {
+  return {
+    code: "CLIENT_UPDATE_REQUIRED",
+    detail: "当前软件版本已停用，请下载最新版本后继续使用。",
+  };
+}
+
+function normalizeUpdatePayload(data: unknown): ClientUpdateRequiredPayload {
+  if (!data || typeof data !== "object") return fallbackUpdatePayload();
+  const payload = data as ClientUpdateRequiredPayload;
+  return {
+    ...payload,
+    code: payload.code || "CLIENT_UPDATE_REQUIRED",
+    detail: payload.detail || payload.message || "当前软件版本已停用，请下载最新版本后继续使用。",
+  };
+}
+
+async function readClientUpdatePayload(response: Response): Promise<ClientUpdateRequiredPayload> {
   try {
-    const payload = await response.clone().json() as ClientUpdateRequiredPayload;
-    activeUpdateHandler?.(payload);
+    return normalizeUpdatePayload(await response.clone().json());
   } catch {
-    activeUpdateHandler?.({
-      code: "CLIENT_UPDATE_REQUIRED",
-      detail: "当前软件版本已停用，请下载最新版本后继续使用。",
-    });
+    return fallbackUpdatePayload();
   }
+}
+
+async function notifyClientUpdateRequired(response: Response): Promise<ClientUpdateRequiredPayload> {
+  const payload = await readClientUpdatePayload(response);
+  activeUpdateHandler?.(payload);
+  return payload;
+}
+
+export function isClientUpdateRequiredError(error: unknown): error is ClientUpdateRequiredError {
+  return error instanceof ClientUpdateRequiredError
+    || (!!error && typeof error === "object" && (error as Error).name === "ClientUpdateRequiredError");
+}
+
+export function isClientUpdateRequired(payload: ClientUpdateRequiredPayload, clientVersion: string): boolean {
+  if (!payload.force_update_enabled) return false;
+  return (clientVersion || "").trim() !== (payload.latest_version || "").trim();
+}
+
+export async function checkClientUpdateRequired(apiBase: string, clientVersion: string): Promise<ClientUpdateRequiredPayload | null> {
+  const version = (clientVersion || FALLBACK_CLIENT_VERSION).trim() || FALLBACK_CLIENT_VERSION;
+  const fetchImpl = originalFetch ?? window.fetch.bind(window);
+  const res = await fetchImpl(`${apiBase.replace(/\/$/, "")}/client-update/config`, {
+    headers: {
+      [CLIENT_VERSION_HEADER]: version,
+      "Cache-Control": "no-cache",
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+
+  const payload = normalizeUpdatePayload(await res.json());
+  if (!isClientUpdateRequired(payload, version)) return null;
+
+  activeUpdateHandler?.(payload);
+  return payload;
 }
 
 export async function readErrorDetail(res: Response): Promise<string> {
@@ -118,10 +177,12 @@ export async function apiGet<T>(apiBase: string, path: string, token?: string): 
   let res: Response;
   try {
     res = await fetch(`${apiBase}${path}`, { headers });
-  } catch {
+  } catch (error) {
+    if (isClientUpdateRequiredError(error)) throw error;
     throw new NetworkError();
   }
 
+  if (res.status === 426) throw new ClientUpdateRequiredError(await readClientUpdatePayload(res));
   if (res.status === 401 || res.status === 403) throw new AuthError();
   if (!res.ok) throw new Error((await readErrorDetail(res)) || `请求失败(${res.status})`);
 
@@ -139,10 +200,12 @@ export async function apiPost<T>(apiBase: string, path: string, body?: unknown, 
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-  } catch {
+  } catch (error) {
+    if (isClientUpdateRequiredError(error)) throw error;
     throw new NetworkError();
   }
 
+  if (res.status === 426) throw new ClientUpdateRequiredError(await readClientUpdatePayload(res));
   if (res.status === 401 || res.status === 403) throw new AuthError();
   if (!res.ok) throw new Error((await readErrorDetail(res)) || `请求失败(${res.status})`);
 

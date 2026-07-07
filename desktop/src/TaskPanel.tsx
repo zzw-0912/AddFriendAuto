@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { isClientUpdateRequiredError } from "./api";
 import { useNetworkStatus } from "./useNetworkStatus";
 import { loadTaskSlotConfig, loadWeChatBindings, normalizeTaskDefaults, saveTaskSlotConfig, saveWeChatBindings } from "./localSettings";
 import { ACCOUNT_AGE_PROFILE_OPTIONS, type AccountAgeProfile, type TargetType, type TaskDefaults, type UserStatus, type WeChatWindowBinding } from "./types";
@@ -74,11 +75,6 @@ const BOOT_STEPS = [
 
 const START_DELAY_SECONDS = 5;
 
-function targetTypeLabel(type: TargetType) {
-  if (type === "contact") return "联系人";
-  return type === "wechat_id" ? "微信号" : "手机号";
-}
-
 function asAccessSnapshot(value: unknown): AccessSnapshot | null {
   if (!value || typeof value !== "object") return null;
   if (!("membership" in value) || !("trial" in value)) return null;
@@ -132,6 +128,7 @@ function TaskPanel({
   const [isRunning, setIsRunning] = useState(false);
   const [, setTaskId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [bootSequenceKey, setBootSequenceKey] = useState(0);
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [bootDone, setBootDone] = useState(false);
   const [toast, setToast] = useState("");
@@ -179,6 +176,12 @@ function TaskPanel({
     lastTrialRemainingRef.current = remaining;
     addUniqueLog(accessNotice(access), remaining > 0 ? "info" : "error");
   }, [addUniqueLog]);
+
+  const startBootSequence = useCallback(() => {
+    setVisibleSteps(0);
+    setBootDone(false);
+    setBootSequenceKey((prev) => prev + 1);
+  }, []);
 
   const writeClientLog = useCallback((message: string) => {
     void invoke("write_client_log", { message }).catch(() => {});
@@ -310,10 +313,8 @@ function TaskPanel({
 
       switch (data.event) {
         case "started":
-          addUniqueLog("AI模型正在思考中", "info");
           break;
         case "progress":
-          addUniqueLog("AI模型正在搜索中", "normal");
           break;
         case "success":
           processedResultKeysRef.current.add(resultKey);
@@ -346,10 +347,10 @@ function TaskPanel({
           finishCurrentTask();
           break;
         default:
-          addUniqueLog("AI模型正在搜索中", "normal");
+          break;
       }
     } catch {
-      addUniqueLog("AI模型正在搜索中", "normal");
+      // Ignore malformed worker progress payloads; user-facing status stays on the AI step animation.
     }
   }, [addUniqueLog, enqueueResultReport, finishCurrentTask, refreshAccessLog, slotId]);
 
@@ -373,7 +374,7 @@ function TaskPanel({
   }, [logs]);
 
   useEffect(() => {
-    if (bootDone) return;
+    if (!bootSequenceKey || bootDone) return;
     const timer = setInterval(() => {
       setVisibleSteps((prev) => {
         if (prev >= BOOT_STEPS.length) {
@@ -385,7 +386,7 @@ function TaskPanel({
       });
     }, 700);
     return () => clearInterval(timer);
-  }, [bootDone]);
+  }, [bootDone, bootSequenceKey]);
 
   useEffect(() => {
     if (isRunning) return;
@@ -520,8 +521,8 @@ function TaskPanel({
       taskIdRef.current = data.task_id;
       isFinishingRef.current = false;
       setIsRunning(true);
+      startBootSequence();
 
-      addUniqueLog(`正在准备${targetTypeLabel(targetType)}名单`, "info");
       const claimRes = await fetch(`${apiBase}/tasks/${data.task_id}/claim-targets`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -545,16 +546,6 @@ function TaskPanel({
         return;
       }
 
-      const preparedCount = claimData.targets.length;
-      addUniqueLog(`本次准备 ${preparedCount} 条好友名单`, "info");
-      if (preparedCount < dailyLimit) {
-        const claimAccess = asAccessSnapshot(claimData) ?? access;
-        const reason = claimAccess?.membership?.is_active
-          ? "线上可用好友名单少于每日限额，本次按实际名单执行"
-          : "免费次数或线上名单少于每日限额，本次按实际名单执行";
-        addUniqueLog(reason, "info");
-      }
-
       const config = {
         run_id: String(data.task_id),
         task_id: data.task_id,
@@ -571,6 +562,10 @@ function TaskPanel({
       addUniqueLog("正在打开微信中", "info");
       await invoke("start_task", { configJson: JSON.stringify(config) });
     } catch (e: any) {
+      if (isClientUpdateRequiredError(e)) {
+        setIsRunning(false);
+        return;
+      }
       addUniqueLog("启动失败，请稍后重试", "error");
       if (taskIdRef.current) {
         await finishCurrentTask();
@@ -748,15 +743,18 @@ function TaskPanel({
         </div>
         <div className="terminal-body">
           <div className="term-line term-title">任务状态</div>
-          {BOOT_STEPS.slice(0, visibleSteps).map((step, i) => (
+          {bootSequenceKey > 0 && BOOT_STEPS.slice(0, visibleSteps).map((step, i) => (
             <div key={i} className="term-line term-status">
               <span className="term-arrow">▶</span> {step}...
               <span className="term-ok">完成</span>
             </div>
           ))}
-          {!bootDone && visibleSteps < BOOT_STEPS.length && <span className="term-cursor">█</span>}
-          {bootDone && (
-            <div className="term-line term-ready">准备就绪，等待开始任务</div>
+          {bootSequenceKey > 0 && !bootDone && visibleSteps < BOOT_STEPS.length && <span className="term-cursor">█</span>}
+          {bootSequenceKey === 0 && (
+            <div className="term-line term-ready">等待开始任务</div>
+          )}
+          {bootSequenceKey > 0 && bootDone && (
+            <div className="term-line term-ready">{isRunning ? "任务运行中，请勿操作鼠标和键盘" : "等待开始任务"}</div>
           )}
           {logs.map((entry) => (
             <div key={entry.id} className={`term-line term-log term-log-${entry.type}`}>

@@ -34,7 +34,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/friendauto_runtime": "friendauto_runtime"
+      "resources/runtime.pak": "runtime.pak"
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"

@@ -1,13 +1,17 @@
 use std::collections::HashMap;
 use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Cursor, Read, Write};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager};
 
 #[derive(Serialize, Deserialize)]
@@ -102,6 +106,13 @@ fn clear_stop_request(run_id: &str) {
 const LEGACY_AUTODOOR_SOURCE_PATH: &str = r"D:\AddFriend\autodoor_behavior_tree";
 const LEGACY_PROJECT_PATH: &str = r"D:\AddFriend\Addfriend";
 const LEGACY_EDITOR_EXECUTABLE_PATH: &str = r"D:\AddFriend\autodoor_behavior_tree\dist\autodoor-behaviortree-1.6.0\autodoor-behaviortree-1.6.0.exe";
+const RUNTIME_PAK_MAGIC: &[u8; 8] = b"FARPAK01";
+const RUNTIME_PAK_KEY: [u8; 32] = [
+    0x71, 0xf4, 0x0e, 0xea, 0x2f, 0xa3, 0x05, 0x53,
+    0xdf, 0x88, 0x5d, 0xb6, 0xa2, 0x46, 0x09, 0xc9,
+    0x02, 0x9d, 0x4c, 0xb5, 0x4f, 0xb6, 0xe8, 0x0d,
+    0xa4, 0x85, 0xb9, 0x2a, 0x8f, 0x0f, 0xe4, 0xc7,
+];
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -279,6 +290,222 @@ fn validate_autodoor_config(config: &AutoDoorConfig) -> Result<(), String> {
     Ok(())
 }
 
+fn runtime_cache_root() -> PathBuf {
+    let path = data_dir().join("runtime");
+    std::fs::create_dir_all(&path).ok();
+    path
+}
+
+fn hex_prefix(bytes: &[u8], length: usize) -> String {
+    let mut text = String::with_capacity(length);
+    for byte in bytes {
+        text.push_str(&format!("{:02x}", byte));
+        if text.len() >= length {
+            break;
+        }
+    }
+    text.truncate(length);
+    text
+}
+
+fn bundled_runtime_pak_path(app_handle: &tauri::AppHandle) -> Option<PathBuf> {
+    let pak_path = app_handle
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|path| path.join("runtime.pak"));
+    match &pak_path {
+        Some(path) => append_client_log(format!(
+            "bundled_runtime_pak candidate={} exists={}",
+            path.display(),
+            path.is_file()
+        )),
+        None => append_client_log("bundled_runtime_pak unavailable"),
+    }
+    pak_path.filter(|path| path.is_file())
+}
+
+fn read_u32_le(cursor: &mut Cursor<&[u8]>) -> Result<u32, String> {
+    let mut buffer = [0u8; 4];
+    cursor.read_exact(&mut buffer).map_err(|e| e.to_string())?;
+    Ok(u32::from_le_bytes(buffer))
+}
+
+fn read_u64_le(cursor: &mut Cursor<&[u8]>) -> Result<u64, String> {
+    let mut buffer = [0u8; 8];
+    cursor.read_exact(&mut buffer).map_err(|e| e.to_string())?;
+    Ok(u64::from_le_bytes(buffer))
+}
+
+fn safe_archive_path(relative_path: &str) -> Result<PathBuf, String> {
+    if relative_path.trim().is_empty()
+        || relative_path.contains('\\')
+        || relative_path.starts_with('/')
+    {
+        return Err(format!("runtime.pak 包含非法路径: {}", relative_path));
+    }
+
+    let path = Path::new(relative_path);
+    let mut output = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => output.push(part),
+            _ => return Err(format!("runtime.pak 包含非法路径: {}", relative_path)),
+        }
+    }
+    Ok(output)
+}
+
+fn decrypt_runtime_pak(pak_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if pak_bytes.len() <= RUNTIME_PAK_MAGIC.len() + 12 + 16 {
+        return Err("runtime.pak 文件不完整".to_string());
+    }
+    if &pak_bytes[..RUNTIME_PAK_MAGIC.len()] != RUNTIME_PAK_MAGIC {
+        return Err("runtime.pak 格式不正确".to_string());
+    }
+
+    let nonce_start = RUNTIME_PAK_MAGIC.len();
+    let tag_start = nonce_start + 12;
+    let cipher_start = tag_start + 16;
+    let nonce = &pak_bytes[nonce_start..tag_start];
+    let tag = &pak_bytes[tag_start..cipher_start];
+    let ciphertext = &pak_bytes[cipher_start..];
+
+    let mut encrypted = Vec::with_capacity(ciphertext.len() + tag.len());
+    encrypted.extend_from_slice(ciphertext);
+    encrypted.extend_from_slice(tag);
+
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&RUNTIME_PAK_KEY));
+    let compressed = cipher
+        .decrypt(Nonce::from_slice(nonce), encrypted.as_ref())
+        .map_err(|_| "runtime.pak 解密失败".to_string())?;
+
+    let mut decoder = GzDecoder::new(&compressed[..]);
+    let mut archive = Vec::new();
+    decoder
+        .read_to_end(&mut archive)
+        .map_err(|e| format!("runtime.pak 解压失败: {}", e))?;
+    Ok(archive)
+}
+
+fn unpack_runtime_archive(archive: &[u8], output_dir: &Path) -> Result<usize, String> {
+    let mut cursor = Cursor::new(archive);
+    let file_count = read_u32_le(&mut cursor)? as usize;
+    if file_count == 0 || file_count > 100_000 {
+        return Err("runtime.pak 文件数量异常".to_string());
+    }
+
+    for _ in 0..file_count {
+        let path_len = read_u32_le(&mut cursor)? as usize;
+        if path_len == 0 || path_len > 4096 {
+            return Err("runtime.pak 路径长度异常".to_string());
+        }
+        let file_len = read_u64_le(&mut cursor)? as usize;
+        let mut path_bytes = vec![0u8; path_len];
+        cursor
+            .read_exact(&mut path_bytes)
+            .map_err(|e| e.to_string())?;
+        let relative_path = String::from_utf8(path_bytes).map_err(|e| e.to_string())?;
+        let safe_path = safe_archive_path(&relative_path)?;
+
+        let current = cursor.position() as usize;
+        let end = current
+            .checked_add(file_len)
+            .ok_or_else(|| "runtime.pak 文件长度异常".to_string())?;
+        if end > archive.len() {
+            return Err("runtime.pak 文件内容不完整".to_string());
+        }
+
+        let output_path = output_dir.join(safe_path);
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&output_path, &archive[current..end]).map_err(|e| e.to_string())?;
+        cursor.set_position(end as u64);
+    }
+
+    Ok(file_count)
+}
+
+fn clean_old_runtime_caches(active_dir: &Path) {
+    let root = runtime_cache_root();
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path != active_dir && path.is_dir() {
+                let _ = std::fs::remove_dir_all(path);
+            }
+        }
+    }
+}
+
+fn ensure_decrypted_runtime_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let Some(pak_path) = bundled_runtime_pak_path(app_handle) else {
+        if let Some(runtime_dir) = bundled_runtime_dir(app_handle) {
+            append_client_log(format!(
+                "runtime_pak missing, using plain runtime={}",
+                runtime_dir.display()
+            ));
+            return Ok(runtime_dir);
+        }
+        return Err("未找到 runtime.pak 或内置运行时目录".to_string());
+    };
+
+    let pak_bytes = std::fs::read(&pak_path).map_err(|e| format!("读取 runtime.pak 失败: {}", e))?;
+    let pak_hash = Sha256::digest(&pak_bytes);
+    let pak_hash_hex = hex_prefix(&pak_hash, 64);
+    let cache_dir = runtime_cache_root().join(hex_prefix(&pak_hash, 16));
+    let marker = cache_dir.join(".runtime_ready");
+    let worker = cache_dir.join("scripts").join("platform_worker.exe");
+    let project = cache_dir.join("automation").join("Addfriend").join("tree.json");
+
+    if marker.is_file()
+        && worker.is_file()
+        && project.is_file()
+        && std::fs::read_to_string(&marker).unwrap_or_default() == pak_hash_hex
+    {
+        append_client_log(format!("runtime_cache ready={}", cache_dir.display()));
+        return Ok(cache_dir);
+    }
+
+    append_client_log(format!(
+        "runtime_cache extracting pak={} cache={}",
+        pak_path.display(),
+        cache_dir.display()
+    ));
+
+    let temp_dir = runtime_cache_root().join(format!(
+        "{}.tmp.{}",
+        hex_prefix(&pak_hash, 16),
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+
+    let archive = decrypt_runtime_pak(&pak_bytes)?;
+    let file_count = unpack_runtime_archive(&archive, &temp_dir)?;
+    if !temp_dir.join("scripts").join("platform_worker.exe").is_file()
+        || !temp_dir.join("automation").join("Addfriend").join("tree.json").is_file()
+    {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return Err("runtime.pak 缺少必要运行文件".to_string());
+    }
+    std::fs::write(temp_dir.join(".runtime_ready"), &pak_hash_hex).map_err(|e| e.to_string())?;
+
+    let _ = std::fs::remove_dir_all(&cache_dir);
+    std::fs::rename(&temp_dir, &cache_dir).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        format!("写入运行时缓存失败: {}", e)
+    })?;
+    append_client_log(format!(
+        "runtime_cache extracted cache={} files={}",
+        cache_dir.display(),
+        file_count
+    ));
+    clean_old_runtime_caches(&cache_dir);
+    Ok(cache_dir)
+}
+
 fn bundled_runtime_dir(app_handle: &tauri::AppHandle) -> Option<PathBuf> {
     let resource_dir = app_handle
         .path()
@@ -299,8 +526,9 @@ fn bundled_runtime_dir(app_handle: &tauri::AppHandle) -> Option<PathBuf> {
 fn resolve_worker_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let mut candidates = Vec::new();
-    if let Some(runtime_dir) = bundled_runtime_dir(app_handle) {
-        candidates.push(runtime_dir.join("scripts").join("platform_worker.exe"));
+    match ensure_decrypted_runtime_dir(app_handle) {
+        Ok(runtime_dir) => candidates.push(runtime_dir.join("scripts").join("platform_worker.exe")),
+        Err(error) => append_client_log(format!("ensure_decrypted_runtime_dir failed={}", error)),
     }
     candidates.extend([
         cwd.join("..").join("scripts").join("platform_worker.exe"),
@@ -325,6 +553,15 @@ fn resolve_worker_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String>
 
     append_client_log("resolve_worker_path failed: worker not found");
     Err("未找到内置 platform_worker.exe 或外置 scripts/platform_worker.py".to_string())
+}
+
+fn worker_runtime_dir(script_path: &Path) -> Option<PathBuf> {
+    let runtime_dir = script_path.parent()?.parent()?.to_path_buf();
+    if runtime_dir.join("automation").is_dir() {
+        Some(runtime_dir)
+    } else {
+        None
+    }
 }
 
 fn is_worker_executable(path: &Path) -> bool {
@@ -1055,6 +1292,10 @@ fn start_task(
         command
     };
     hide_child_console(&mut command);
+    if let Some(runtime_dir) = worker_runtime_dir(&script_path) {
+        append_client_log(format!("start_task runtime_dir={}", runtime_dir.display()));
+        command.env("FRIENDAUTO_RUNTIME_DIR", runtime_dir);
+    }
 
     let mut child = command
         .env("PYTHONIOENCODING", "utf-8")

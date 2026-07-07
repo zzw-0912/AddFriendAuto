@@ -20,6 +20,7 @@ import email.utils
 import http.client
 import http.cookiejar
 import http.cookies
+import importlib
 import io
 import json
 import mimetypes
@@ -63,6 +64,7 @@ ADD_TO_CONTACTS_KEYWORDS = ["添加到通讯录"]
 SEARCH_CLEANUP_KEYWORDS = ["叉", "点击叉"]
 CLOSE_FRIEND_WINDOW_KEYWORDS = ["点击叉", "关闭"]
 WECHAT_START_KEYWORDS = ["微信", "添加朋友", "申请添加朋友"]
+ALREADY_FRIEND_KEYWORDS = ["发消息", "语音聊天", "视频聊天"]
 SEARCH_RESULT_RETRY_COUNT = 8
 SEARCH_RESULT_RETRY_INTERVAL_MS = 500
 BOOTSTRAP_MAX_ATTEMPTS = 2
@@ -130,6 +132,20 @@ class PreparedRun:
 
 _emit_lock = threading.Lock()
 _dll_directory_handles: list[Any] = []
+AUTODOOR_EXTERNAL_MODULE_PREFIXES = (
+    "PIL",
+    "cv2",
+    "numpy",
+    "rapidocr",
+    "onnxruntime",
+    "bt_core",
+    "bt_nodes",
+    "bt_utils",
+    "pyautogui",
+    "pyscreeze",
+    "pyclipper",
+    "shapely",
+)
 
 
 class StopRequested(Exception):
@@ -138,6 +154,9 @@ class StopRequested(Exception):
 
 def runtime_base_dirs() -> list[Path]:
     bases: list[Path] = []
+    runtime_dir = os.environ.get("FRIENDAUTO_RUNTIME_DIR")
+    if runtime_dir:
+        bases.append(Path(runtime_dir))
     for base in [Path(__file__).resolve().parents[1], Path.cwd(), Path(sys.executable).resolve().parent]:
         bases.append(base)
         bases.extend(base.parents[:2])
@@ -419,6 +438,7 @@ def interprocess_file_lock(lock_file_name: str):
 def load_config() -> AutoDoorConfig:
     config = default_autodoor_config()
     path = app_data_dir() / CONFIG_FILE_NAME
+    forced_runtime_dir = os.environ.get("FRIENDAUTO_RUNTIME_DIR")
     append_worker_log(
         "load_config defaults",
         config_path=str(path),
@@ -434,6 +454,15 @@ def load_config() -> AutoDoorConfig:
 
     with path.open("r", encoding="utf-8") as f:
         raw = json.load(f)
+
+    if forced_runtime_dir and Path(config.autodoor_source_path).is_dir() and Path(config.project_path).is_dir():
+        append_worker_log(
+            "load_config forced_runtime",
+            runtime_dir=forced_runtime_dir,
+            autodoor_source_path=config.autodoor_source_path,
+            project_path=config.project_path,
+        )
+        return config
 
     config.autodoor_source_path = str(
         raw.get("autodoorSourcePath")
@@ -959,6 +988,19 @@ def find_success_close_clicks(nodes: dict[str, dict[str, Any]], node_ids: list[s
     return close_ids
 
 
+def disable_target_input_validation(nodes: dict[str, dict[str, Any]], node_ids: list[str]) -> set[str]:
+    disabled_ids: set[str] = set()
+    for node_id in node_ids:
+        node = nodes[node_id]
+        if node_type(node) != "VariableConditionNode":
+            continue
+        if not contains_any(node_name(node), VALIDATION_KEYWORDS):
+            continue
+        set_node_enabled(node, False)
+        disabled_ids.add(node_id)
+    return disabled_ids
+
+
 def patch_search_not_found_recovery(tree_data: dict[str, Any], node_ids: list[str]) -> set[str]:
     nodes = tree_data.get("nodes", {})
     parents = parent_map(nodes)
@@ -1101,6 +1143,14 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         root_config["repeat_interval_ms_random"] = str(repeat_interval_ms_random)
 
     greeting_ids = patch_greeting(tree_data, active_ids, str(task_config.get("greeting_text") or "").strip())
+    if not bool(task_config.get("create_tag")):
+        patch_skip_tag_flow(tree_data, active_ids, greeting_ids)
+        active_ids = reachable_enabled_ids(nodes, root_id)
+
+    disabled_validation_ids = disable_target_input_validation(nodes, active_ids)
+    if disabled_validation_ids:
+        active_ids = reachable_enabled_ids(nodes, root_id)
+
     append_worker_log(
         "patch_tree task_runtime",
         target_type=target_type,
@@ -1110,10 +1160,8 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         repeat_interval_ms_random=repeat_interval_ms_random,
         greeting_nodes=sorted(greeting_ids),
         has_greeting=bool(str(task_config.get("greeting_text") or "").strip()),
+        disabled_validation_ids=sorted(disabled_validation_ids),
     )
-    if not bool(task_config.get("create_tag")):
-        patch_skip_tag_flow(tree_data, active_ids, greeting_ids)
-        active_ids = reachable_enabled_ids(nodes, root_id)
 
     not_found_ids = patch_search_not_found_recovery(tree_data, active_ids)
     active_ids = reachable_enabled_ids(nodes, root_id)
@@ -1158,6 +1206,7 @@ def patch_tree(tree_file: Path, task_config: dict[str, Any]) -> dict[str, Any]:
         "confirm_click_ids": confirm_click_ids,
         "success_close_ids": success_close_ids,
         "key_failure_ids": key_failure_ids,
+        "disabled_validation_ids": disabled_validation_ids,
         "disabled_accounts": disabled_accounts,
         "stabilized_clicks": stabilized_clicks,
     }
@@ -1212,6 +1261,7 @@ def prepare_run(config: AutoDoorConfig, task_config: dict[str, Any]) -> Prepared
         confirm_click_ids=list(patched["confirm_click_ids"]),
         success_close_ids=list(patched["success_close_ids"]),
         key_failure_ids=list(patched["key_failure_ids"]),
+        disabled_validation_ids=list(patched.get("disabled_validation_ids", [])),
     )
 
     base_tree_file = project_dir / "friendauto_base_tree.json"
@@ -1301,9 +1351,73 @@ def candidate_python_import_paths(dependency_paths: list[Path]) -> list[Path]:
             paths.append(path)
 
     for dependency_path in dependency_paths:
-        add_path(dependency_path / "base_library.zip")
         add_path(dependency_path)
+        add_path(dependency_path / "base_library.zip")
     return paths
+
+
+def prepend_sys_paths(paths: list[Path]) -> None:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path.resolve() if path.exists() else path).lower()
+        if key not in seen and path.exists():
+            seen.add(key)
+            ordered.append(str(path))
+
+    for path in ordered:
+        while path in sys.path:
+            sys.path.remove(path)
+
+    for path in reversed(ordered):
+        sys.path.insert(0, path)
+
+
+def clear_autodoor_dependency_modules() -> list[str]:
+    removed: list[str] = []
+    prefixes = AUTODOOR_EXTERNAL_MODULE_PREFIXES
+    for module_name in list(sys.modules):
+        if any(module_name == prefix or module_name.startswith(prefix + ".") for prefix in prefixes):
+            removed.append(module_name)
+            sys.modules.pop(module_name, None)
+    importlib.invalidate_caches()
+    return removed
+
+
+def module_file(module: Any) -> str:
+    value = getattr(module, "__file__", "")
+    if value:
+        return str(value)
+    paths = getattr(module, "__path__", None)
+    if paths:
+        return ";".join(str(path) for path in paths)
+    return "<unknown>"
+
+
+def preflight_autodoor_dependencies() -> None:
+    try:
+        pil = importlib.import_module("PIL")
+        image_grab = importlib.import_module("PIL.ImageGrab")
+        image = importlib.import_module("PIL.Image")
+        cv2_module = importlib.import_module("cv2")
+    except Exception as exc:
+        append_worker_log(
+            "nuitka_dependency_preflight_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            traceback=traceback.format_exc(),
+            sys_path=sys.path[:30],
+        )
+        raise
+
+    append_worker_log(
+        "nuitka_dependency_preflight",
+        pil_file=module_file(pil),
+        imagegrab_file=module_file(image_grab),
+        image_file=module_file(image),
+        cv2_file=module_file(cv2_module),
+        sys_path=sys.path[:12],
+    )
 
 
 def import_autodoor(config: AutoDoorConfig):
@@ -1321,9 +1435,14 @@ def import_autodoor(config: AutoDoorConfig):
     if not source.exists():
         raise RuntimeError(f"AutoDoor 源码目录不存在: {source}")
     add_runtime_dll_directories(dependency_paths)
-    sys.path.insert(0, str(source))
-    for import_path in reversed(import_paths):
-        sys.path.insert(1, str(import_path))
+    prepend_sys_paths(import_paths + [source])
+    removed_modules = clear_autodoor_dependency_modules()
+    append_worker_log(
+        "autodoor_dependency_modules_cleared",
+        count=len(removed_modules),
+        modules=removed_modules[:80],
+    )
+    preflight_autodoor_dependencies()
 
     try:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -1471,6 +1590,89 @@ def prepared_run_for_target(prepared: PreparedRun, target: PreparedTarget) -> Pr
     )
 
 
+def close_add_friend_window(task_config: dict[str, Any], run_id: str, reason: str) -> bool:
+    binding = parse_wechat_binding(task_config)
+    pid = int(binding.get("pid") or 0) if binding else 0
+    try:
+        from bt_utils.window_manager import WindowManager
+
+        hwnd, find_method = WindowManager.find_window_smart(
+            pid if pid > 0 else None,
+            "添加朋友",
+        )
+        if not hwnd:
+            append_worker_log(
+                "close_add_friend_window not_found",
+                run_id=run_id,
+                reason=reason,
+                pid=pid,
+            )
+            return False
+
+        win32gui = importlib.import_module("win32gui")
+        win32con = importlib.import_module("win32con")
+        ok = bool(win32gui.PostMessage(int(hwnd), win32con.WM_CLOSE, 0, 0))
+        append_worker_log(
+            "close_add_friend_window",
+            run_id=run_id,
+            reason=reason,
+            hwnd=int(hwnd),
+            find_method=find_method,
+            pid=pid,
+            ok=ok,
+        )
+        return ok
+    except Exception as exc:
+        append_worker_log(
+            "close_add_friend_window error",
+            run_id=run_id,
+            reason=reason,
+            pid=pid,
+            error=repr(exc),
+        )
+        return False
+
+
+def detect_already_friend_screen(context: Any, run_id: str) -> bool:
+    try:
+        screenshot = context.get_screenshot()
+        if screenshot is None:
+            append_worker_log("already_friend_screen_check", run_id=run_id, found=False, reason="no_screenshot")
+            return False
+
+        from bt_utils.ocr_manager import OCRManager
+
+        keywords = ",".join(ALREADY_FRIEND_KEYWORDS)
+        found, position, all_text = OCRManager().recognize(
+            screenshot,
+            keywords=keywords,
+            language="chi_sim",
+            preprocess_mode="normal",
+            use_cache=False,
+        )
+        compact_text = re.sub(r"\s+", "", str(all_text or ""))
+        fallback_found = any(keyword in compact_text for keyword in ALREADY_FRIEND_KEYWORDS)
+        final_found = bool(found or fallback_found)
+        append_worker_log(
+            "already_friend_screen_check",
+            run_id=run_id,
+            found=final_found,
+            ocr_found=bool(found),
+            fallback_found=fallback_found,
+            position=position,
+            text_preview=str(all_text or "")[:220],
+        )
+        return final_found
+    except Exception as exc:
+        append_worker_log(
+            "already_friend_screen_check error",
+            run_id=run_id,
+            found=False,
+            error=repr(exc),
+        )
+        return False
+
+
 def run_autodoor_once(
     deps: tuple[Any, Any, Any, Any, Any, Any],
     prepared: PreparedRun,
@@ -1500,6 +1702,8 @@ def run_autodoor_once(
         "target_index": -1,
         "current_target": None,
         "awaiting_success_close_key": None,
+        "awaiting_already_friend_close_key": None,
+        "awaiting_invalid_close_key": None,
         "input_started": False,
         "last_input_text": "",
         "same_input_success_count": 0,
@@ -1624,6 +1828,8 @@ def run_autodoor_once(
             target_id=target.target_id,
             result_message=record.get("message"),
         )
+        if reason != "search_cleanup_closed":
+            close_add_friend_window(task_config, run_id, f"pending_invalid_{reason}")
         mark_terminal("invalid", str(record.get("message") or "当前联系人无效"))
         return True
 
@@ -1650,8 +1856,9 @@ def run_autodoor_once(
             )
             state["failed"].discard(result_key)
             state["invalid"].discard(result_key)
-        if state.get("awaiting_success_close_key") == result_key:
-            state["awaiting_success_close_key"] = None
+        for key in ["awaiting_success_close_key", "awaiting_already_friend_close_key", "awaiting_invalid_close_key"]:
+            if state.get(key) == result_key:
+                state[key] = None
         clear_pending_invalid(result_key, f"terminal_{event_name}", event_name, target)
         if event_name == "success":
             state["completed"].add(result_key)
@@ -1692,6 +1899,8 @@ def run_autodoor_once(
         state["target_index"] = next_index
         state["current_target"] = prepared.targets[next_index]
         state["awaiting_success_close_key"] = None
+        state["awaiting_already_friend_close_key"] = None
+        state["awaiting_invalid_close_key"] = None
         state["last_input_text"] = ""
         state["same_input_success_count"] = 0
         state["abort_current_target"] = False
@@ -1751,6 +1960,7 @@ def run_autodoor_once(
                 input_value=mask_target(target.target_type, text),
                 same_input_success_count=state["same_input_success_count"],
             )
+            close_add_friend_window(task_config, run_id, "repeated_input_abort")
             mark_terminal("failed", "当前联系人重复输入多次仍未进入下一步，跳过此联系人")
             state["abort_current_target"] = True
 
@@ -1813,6 +2023,28 @@ def run_autodoor_once(
             return
 
         if status == "failure" and node_id in prepared.not_found_ids:
+            target = state["current_target"]
+            result_key = target_result_key(target)
+            if result_key is not None and detect_already_friend_screen(context, run_id):
+                state["awaiting_already_friend_close_key"] = result_key
+                append_worker_log(
+                    "already_friend_screen_detected",
+                    run_id=run_id,
+                    node_id=node_id,
+                    target_index=state["target_index"],
+                    target_id=target.target_id if target else None,
+                )
+                emit(
+                    "progress",
+                    "联系人已是好友，正在关闭添加朋友窗口",
+                    run_id=run_id,
+                    target_id=target.target_id if target else None,
+                    target_type=target.target_type if target else None,
+                    contact_id=current_contact_id(),
+                )
+                return
+            if result_key is not None:
+                state["awaiting_invalid_close_key"] = result_key
             set_pending_invalid("未找到该用户，继续处理下一条", "not_found_failure", node_id)
             return
 
@@ -1834,6 +2066,30 @@ def run_autodoor_once(
             result_key = target_result_key(state["current_target"])
             if result_key is not None and state.get("awaiting_success_close_key") == result_key:
                 mark_terminal("success", "好友申请已确认并关闭窗口")
+                return
+            if result_key is not None and state.get("awaiting_already_friend_close_key") == result_key:
+                mark_terminal("success", "联系人已是好友并关闭窗口")
+                return
+            if result_key is not None and (
+                state.get("awaiting_invalid_close_key") == result_key
+                or result_key in state["pending_invalid"]
+            ):
+                append_worker_log(
+                    "pending_invalid_close_detected",
+                    run_id=run_id,
+                    node_id=node_id,
+                    target_index=state["target_index"],
+                    target_id=state["current_target"].target_id if state["current_target"] else None,
+                )
+                finalize_pending_invalid("search_cleanup_closed")
+                return
+            append_worker_log(
+                "close_click_without_terminal",
+                run_id=run_id,
+                node_id=node_id,
+                target_index=state["target_index"],
+                target_id=state["current_target"].target_id if state["current_target"] else None,
+            )
             return
 
         if status == "failure" and node_id in prepared.key_failure_ids:
@@ -1916,7 +2172,16 @@ def run_autodoor_once(
         dispatcher.process_pending()
         flush_logs()
 
-    finalize_pending_invalid("engine_finished")
+    result_key = target_result_key(state["current_target"])
+    if (
+        result_key is not None
+        and not current_target_is_terminal()
+        and state.get("awaiting_already_friend_close_key") == result_key
+    ):
+        close_add_friend_window(task_config, run_id, "already_friend_engine_finished")
+        mark_terminal("success", "联系人已是好友并关闭窗口")
+    else:
+        finalize_pending_invalid("engine_finished")
     total_finished = len(state["completed"]) + len(state["failed"]) + len(state["invalid"])
     if state["current_target"] and total_finished == 0:
         mark_terminal("failed", "任务结束但未捕获到发送成功事件")
@@ -2104,6 +2369,11 @@ def main() -> int:
         append_worker_log("worker task_loaded", task=task_summary(task_config))
         config = load_config()
         run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
+        if os.environ.get("FRIENDAUTO_IMPORT_SMOKE") == "1":
+            import_autodoor(config)
+            append_worker_log("worker import_smoke_ok", task=task_summary(task_config))
+            emit("finished", "import smoke ok", run_id=run_id)
+            return 0
         raise_if_stop_requested(run_id)
         prepared = prepare_run(config, task_config)
         raise_if_stop_requested(run_id)

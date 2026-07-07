@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authErrorMessage } from "./authMessages";
 import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
+import { isClientUpdateRequiredError } from "./api";
 
 export function useSendCode(apiBase: string, showToast: (message: string) => void) {
   const [countdown, setCountdown] = useState(0);
@@ -31,7 +32,11 @@ export function useSendCode(apiBase: string, showToast: (message: string) => voi
         return;
       }
       showToast("验证码已发送");
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) {
+        setCountdown(0);
+        return;
+      }
       showToast("无法连接服务器");
       setCountdown(0);
       return;

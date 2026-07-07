@@ -464,7 +464,6 @@ def report_result(
             db.query(TaskTarget)
             .filter(
                 TaskTarget.id == target_id,
-                TaskTarget.user_id == user.id,
                 target_claim_filter,
             )
             .with_for_update()
@@ -495,6 +494,7 @@ def report_result(
             existing.message = message
             if target:
                 existing.target_type = target.target_type
+                target.user_id = user.id
                 target.status = result_target_status(event)
                 target.finished_at = datetime.now(timezone.utc)
                 target.result_message = message
@@ -517,6 +517,7 @@ def report_result(
     )
     db.add(result)
     if target:
+        target.user_id = user.id
         target.status = result_target_status(event)
         target.finished_at = datetime.now(timezone.utc)
         target.result_message = message

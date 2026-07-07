@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:runtime",
+    "build:runtime": "node scripts/build-runtime-pak.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "tauri": "node scripts/tauri-random-port.mjs"

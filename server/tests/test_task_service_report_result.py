@@ -125,6 +125,24 @@ class TaskServiceReportResultTest(unittest.TestCase):
         self.assertTrue(result.trial_charged)
         self.assertEqual(target.status, "success")
 
+    def test_success_for_claimed_global_target_charges_and_reassigns_target_owner(self):
+        user, task, target = self.add_running_task_with_target()
+        original_owner = User(email="owner@qq.com", password_hash="hashed", referral_code="OWNER1")
+        self.db.add(original_owner)
+        self.db.flush()
+        target.user_id = original_owner.id
+        self.db.commit()
+
+        result = report_result(task.id, target.id, None, "success", "ok", user, self.db)
+
+        quota = self.quota_for(user.id)
+        self.db.refresh(target)
+        self.assertTrue(result["charged"])
+        self.assertEqual(quota.used_count, 1)
+        self.assertEqual(quota.remaining_count, 1)
+        self.assertEqual(target.user_id, user.id)
+        self.assertEqual(target.status, "success")
+
 
 if __name__ == "__main__":
     unittest.main()

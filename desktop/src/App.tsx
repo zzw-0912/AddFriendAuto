@@ -4,7 +4,13 @@ import { invoke } from "@tauri-apps/api/core";
 import ForceUpdateModal from "./ForceUpdateModal";
 import LoginPage from "./LoginPage";
 import MainPage from "./MainPage";
-import { FALLBACK_CLIENT_VERSION, installClientUpdateInterceptor, saveAccount, type ClientUpdateRequiredPayload } from "./api";
+import {
+  checkClientUpdateRequired,
+  FALLBACK_CLIENT_VERSION,
+  installClientUpdateInterceptor,
+  saveAccount,
+  type ClientUpdateRequiredPayload,
+} from "./api";
 import "./App.css";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "http://47.111.3.83:8001").replace(/\/$/, "");
@@ -34,6 +40,17 @@ function App() {
       if (cancelled) return;
       setClientVersion(detectedVersion);
       installClientUpdateInterceptor(API_BASE, detectedVersion, (payload) => setUpdateRequired(payload));
+      try {
+        const updatePayload = await checkClientUpdateRequired(API_BASE, detectedVersion);
+        if (cancelled) return;
+        if (updatePayload) {
+          setUpdateRequired(updatePayload);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // If the update config endpoint is temporarily unreachable, keep the app usable.
+      }
 
       try {
         const mc = await invoke<string>("get_machine_code");
