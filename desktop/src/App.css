@@ -22,7 +22,7 @@
   --radius-pill: 999px;
   --sidebar-width: 220px;
   --sidebar-collapsed: 68px;
-  --window-width: min(1370px, calc(100vw - 56px));
+  --window-width: min(1680px, calc(100vw - 32px));
   --window-height: min(1032px, calc(100vh - 42px));
 }
 

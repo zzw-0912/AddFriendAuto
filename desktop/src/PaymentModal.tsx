@@ -35,12 +35,12 @@ const planTiers: Record<number, { name: string; usage: string; features: string[
   1: {
     name: "Plus",
     usage: "适合轻量加好友任务",
-    features: ["1 个微信任务窗口", "会员期内持续使用", "自定义打招呼语", "任务进度追踪"],
+    features: ["1 个微信任务窗口", "会员期内无限使用", "自定义打招呼语", "任务进度追踪"],
   },
   2: {
     name: "Pro 5x",
     usage: "适合多账号稳定执行",
-    features: ["最多 2 个微信任务窗口", "更高任务处理能力", "自定义打招呼语", "优先客服支持"],
+    features: ["最多 2 个微信任务窗口", "会员期内无限使用", "任务进度追踪", "专属会员通道", "专属客服支持", "更高客户群体"],
   },
   3: {
     name: "Pro 20x",
@@ -165,7 +165,7 @@ function PaymentModal({ apiBase, token, userEmail, trialRemaining, canSkipTrial 
             const tier = planTier(p);
             const displayName = planDisplayName(p);
             const isFeatured = displayName === "Pro 5x";
-            const features = tier?.features ?? ["会员期内持续使用", "自定义打招呼语", "任务进度追踪"];
+            const features = tier?.features ?? ["会员期内无限使用", "自定义打招呼语", "任务进度追踪"];
 
             return (
               <div

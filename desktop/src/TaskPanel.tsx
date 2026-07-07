@@ -73,6 +73,12 @@ const BOOT_STEPS = [
   "AI模型正在整合信息中",
 ];
 
+const WAIT_HINTS = [
+  "AI模型正在思考中...",
+  "AI模型正在搜索中...",
+  "AI模型正在信息验证中...",
+];
+const WAIT_HINT_INTERVAL_MS = 60_000;
 const START_DELAY_SECONDS = 5;
 
 function asAccessSnapshot(value: unknown): AccessSnapshot | null {
@@ -146,6 +152,8 @@ function TaskPanel({
   const startDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const waitHintTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const waitHintIndexRef = useRef(0);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -182,6 +190,28 @@ function TaskPanel({
     setBootDone(false);
     setBootSequenceKey((prev) => prev + 1);
   }, []);
+
+  const clearWaitHintTimer = useCallback((resetIndex = false) => {
+    if (waitHintTimerRef.current) {
+      clearInterval(waitHintTimerRef.current);
+      waitHintTimerRef.current = null;
+    }
+    if (resetIndex) {
+      waitHintIndexRef.current = 0;
+    }
+  }, []);
+
+  const appendWaitHint = useCallback(() => {
+    const hint = WAIT_HINTS[waitHintIndexRef.current % WAIT_HINTS.length];
+    waitHintIndexRef.current += 1;
+    addLog(hint, "info");
+  }, [addLog]);
+
+  const startWaitHintTimer = useCallback(() => {
+    clearWaitHintTimer(true);
+    appendWaitHint();
+    waitHintTimerRef.current = setInterval(appendWaitHint, WAIT_HINT_INTERVAL_MS);
+  }, [appendWaitHint, clearWaitHintTimer]);
 
   const writeClientLog = useCallback((message: string) => {
     void invoke("write_client_log", { message }).catch(() => {});
@@ -246,6 +276,7 @@ function TaskPanel({
   const finishCurrentTask = useCallback(async () => {
     const tid = taskIdRef.current;
     if (!tid || isFinishingRef.current) return;
+    clearWaitHintTimer(true);
     isFinishingRef.current = true;
     await waitForPendingResultReports();
     try {
@@ -264,7 +295,7 @@ function TaskPanel({
     isFinishingRef.current = false;
     const latestStatus = asAccessSnapshot(await onStatusChange({ force: true }));
     addAccessLog(latestStatus);
-  }, [addAccessLog, addUniqueLog, apiBase, onStatusChange, token, waitForPendingResultReports, writeClientLog]);
+  }, [addAccessLog, addUniqueLog, apiBase, clearWaitHintTimer, onStatusChange, token, waitForPendingResultReports, writeClientLog]);
 
   const refreshAccessLog = useCallback(async () => {
     const latestStatus = asAccessSnapshot(await onStatusChange({ force: true }));
@@ -287,6 +318,7 @@ function TaskPanel({
       if (eventRunId && !currentRunId) return;
 
       if (data.event === "exited") {
+        clearWaitHintTimer(true);
         if (hasRunErrorRef.current) {
           if (taskIdRef.current) {
             finishCurrentTask();
@@ -313,32 +345,43 @@ function TaskPanel({
 
       switch (data.event) {
         case "started":
+          clearWaitHintTimer(true);
           break;
         case "progress":
+          if (msg.includes("等待下一次加好友")) {
+            startWaitHintTimer();
+          } else if (msg.includes("开始处理联系人")) {
+            clearWaitHintTimer(true);
+          }
           break;
         case "success":
+          clearWaitHintTimer(true);
           processedResultKeysRef.current.add(resultKey);
           void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then(() => {
             void refreshAccessLog();
           });
           break;
         case "failed":
+          clearWaitHintTimer(true);
           processedResultKeysRef.current.add(resultKey);
           void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then((result) => {
             if (result?.charged) void refreshAccessLog();
           });
           break;
         case "invalid":
+          clearWaitHintTimer(true);
           processedResultKeysRef.current.add(resultKey);
           void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then((result) => {
             if (result?.charged) void refreshAccessLog();
           });
           break;
         case "error":
+          clearWaitHintTimer(true);
           hasRunErrorRef.current = true;
           addUniqueLog("任务运行异常，请稍后重试", "error");
           break;
         case "finished":
+          clearWaitHintTimer(true);
           if (hasRunErrorRef.current) {
             finishCurrentTask();
             break;
@@ -352,7 +395,7 @@ function TaskPanel({
     } catch {
       // Ignore malformed worker progress payloads; user-facing status stays on the AI step animation.
     }
-  }, [addUniqueLog, enqueueResultReport, finishCurrentTask, refreshAccessLog, slotId]);
+  }, [addUniqueLog, clearWaitHintTimer, enqueueResultReport, finishCurrentTask, refreshAccessLog, slotId, startWaitHintTimer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -403,8 +446,9 @@ function TaskPanel({
       if (startDelayTimerRef.current) clearTimeout(startDelayTimerRef.current);
       if (startCountdownTimerRef.current) clearInterval(startCountdownTimerRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      clearWaitHintTimer(true);
     };
-  }, []);
+  }, [clearWaitHintTimer]);
 
   const clearStartDelay = useCallback(() => {
     if (startDelayTimerRef.current) {
@@ -481,6 +525,7 @@ function TaskPanel({
     lastTrialRemainingRef.current = null;
     hasRunErrorRef.current = false;
     processedResultKeysRef.current.clear();
+    clearWaitHintTimer(true);
 
     try {
       const safeConfig = normalizeTaskDefaults(
@@ -563,6 +608,7 @@ function TaskPanel({
       await invoke("start_task", { configJson: JSON.stringify(config) });
     } catch (e: any) {
       if (isClientUpdateRequiredError(e)) {
+        clearWaitHintTimer(true);
         setIsRunning(false);
         return;
       }
@@ -626,6 +672,7 @@ function TaskPanel({
   };
 
   const handleStop = async () => {
+    clearWaitHintTimer(true);
     addUniqueLog("正在停止任务", "info");
     try {
       const runId = taskIdRef.current ? String(taskIdRef.current) : "";
