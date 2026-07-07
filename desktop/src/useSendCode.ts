@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { authErrorMessage } from "./authMessages";
+import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
+import { isClientUpdateRequiredError } from "./api";
 
 export function useSendCode(apiBase: string, showToast: (message: string) => void) {
   const [countdown, setCountdown] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const send = useCallback(async (email: string) => {
-    if (!email) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
       showToast("请先输入邮箱地址");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showToast("请输入有效的邮箱地址");
+    if (!isQqEmail(normalizedEmail)) {
+      showToast(QQ_EMAIL_ONLY_MESSAGE);
       return;
     }
 
@@ -19,16 +23,20 @@ export function useSendCode(apiBase: string, showToast: (message: string) => voi
       const res = await fetch(`${apiBase}/auth/send-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: normalizedEmail }),
       });
       const data = await res.json();
       if (!res.ok) {
-        showToast(data.detail || "发送失败");
+        showToast(authErrorMessage(data?.detail, "发送失败"));
         setCountdown(0);
         return;
       }
       showToast("验证码已发送");
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) {
+        setCountdown(0);
+        return;
+      }
       showToast("无法连接服务器");
       setCountdown(0);
       return;

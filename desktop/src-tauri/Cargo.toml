@@ -23,3 +23,6 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 dirs-next = "2.0"
+aes-gcm = "0.10"
+flate2 = "1.0"
+sha2 = "0.10"

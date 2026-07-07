@@ -12,6 +12,7 @@ class Task(Base):
     user_id = Column(Integer, nullable=False, index=True)
     device_id = Column(Integer, nullable=False)
     slot_id = Column(Integer, default=1, nullable=False)
+    target_type = Column(String(20), default="contact", nullable=False)
     daily_limit = Column(Integer, default=20)
     create_tag = Column(Boolean, default=False)
     greeting_text = Column(Text, nullable=True)

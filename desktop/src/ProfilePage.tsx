@@ -52,6 +52,7 @@ interface LoadError {
 }
 
 const APP_VERSION = "0.1.0";
+const VISIBLE_WECHAT_SLOT_IDS = [1, 2];
 
 function formatDate(s: string | null) {
   return s ? s.slice(0, 10) : "-";
@@ -141,6 +142,7 @@ function ProfilePage({
         pid: selectedWindow.pid,
         title: selectedWindow.title,
         displayName: selectedWindow.displayName,
+        executablePath: selectedWindow.executablePath,
         boundAt: new Date().toISOString(),
       },
     };
@@ -352,25 +354,6 @@ function ProfilePage({
         </div>
       </div>
 
-      {/* Statistics Card */}
-      <div className="profile-card">
-        <h4 className="profile-card-title">累计数据</h4>
-        <div className="profile-stats">
-          <div className="profile-stat stat-success">
-            <div className="stat-number">{(profile?.success_count ?? 0).toLocaleString()}</div>
-            <div className="stat-label">加人成功</div>
-          </div>
-          <div className="profile-stat stat-failed">
-            <div className="stat-number">{(profile?.failed_count ?? 0).toLocaleString()}</div>
-            <div className="stat-label">失败</div>
-          </div>
-          <div className="profile-stat stat-invalid">
-            <div className="stat-number">{(profile?.invalid_count ?? 0).toLocaleString()}</div>
-            <div className="stat-label">无效</div>
-          </div>
-        </div>
-      </div>
-
       {/* Referral Code Card */}
       <div className="profile-card">
         <h4 className="profile-card-title">推荐码</h4>
@@ -459,7 +442,7 @@ function ProfilePage({
         </div>
 
         <div className="wechat-bind-list">
-          {[1, 2, 3].map((slotId) => {
+          {VISIBLE_WECHAT_SLOT_IDS.map((slotId) => {
             const binding = wechatBindings[String(slotId)];
             return (
               <div className="wechat-bind-row" key={slotId}>
@@ -498,7 +481,7 @@ function ProfilePage({
       <div className="profile-card settings-card">
         <h4 className="profile-card-title">修改密码</h4>
         <p className="profile-card-desc">通过当前登录邮箱验证后修改密码</p>
-        <form className="settings-form" onSubmit={handlePasswordReset}>
+        <form className="settings-form" onSubmit={handlePasswordReset} noValidate>
           <div className="field">
             <label>邮箱地址</label>
             <input className="input" type="email" value={email} disabled />

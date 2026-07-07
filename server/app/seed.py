@@ -6,23 +6,32 @@ from sqlalchemy import text
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import hash_password
 from app.models.admin_user import AdminUser
+from app.models.client_update import ClientUpdateConfig
 from app.models.feedback import Feedback
+from app.models.hero_slide import HeroSlide
 from app.models.plan import Plan
+from app.models.task import Task
+from app.models.task_result import TaskResult
+from app.models.task_target import TaskTarget
 from app.models.user import User
 
 
 DEFAULT_PLANS = [
-    {"name": "月卡", "duration_days": 30, "price_cents": 30000, "enabled": True},
-    {"name": "季卡", "duration_days": 90, "price_cents": 50000, "enabled": True},
-    {"name": "年卡", "duration_days": 365, "price_cents": 80000, "enabled": True},
+    {"id": 1, "name": "Plus", "duration_days": 30, "price_cents": 30000, "enabled": True},
+    {"id": 2, "name": "Pro 5x", "duration_days": 30, "price_cents": 50000, "enabled": True},
+    {"id": 3, "name": "Pro 20x", "duration_days": 30, "price_cents": 80000, "enabled": False},
 ]
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    is_sqlite = engine.dialect.name == "sqlite"
+    if is_sqlite:
+        Base.metadata.create_all(bind=engine)
+    ClientUpdateConfig.__table__.create(bind=engine, checkfirst=True)
+    HeroSlide.__table__.create(bind=engine, checkfirst=True)
 
     # Add columns to existing tables if missing (SQLite compat)
-    if "sqlite" in str(engine.url):
+    if is_sqlite:
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
@@ -47,8 +56,38 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE tasks ADD COLUMN target_type VARCHAR(20) NOT NULL DEFAULT 'phone'"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE task_targets ADD COLUMN name VARCHAR(255)"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE task_results ADD COLUMN target_id INTEGER"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE task_results ADD COLUMN target_type VARCHAR(20)"))
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("CREATE UNIQUE INDEX uq_task_results_task_target ON task_results (task_id, target_id)"))
+                conn.commit()
+        except Exception:
+            pass
 
-    if "sqlite" in str(engine.url):
+    if is_sqlite:
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN referral_code VARCHAR(16)"))
@@ -71,16 +110,35 @@ def init_db():
         if users_missing:
             db.commit()
 
-        existing_plans = {plan.name: plan for plan in db.query(Plan).all()}
+        existing_plans_by_id = {plan.id: plan for plan in db.query(Plan).all()}
         for defaults in DEFAULT_PLANS:
-            plan = existing_plans.get(defaults["name"])
+            plan = existing_plans_by_id.get(defaults["id"])
             if plan:
+                plan.name = defaults["name"]
                 plan.duration_days = defaults["duration_days"]
                 plan.price_cents = defaults["price_cents"]
                 plan.enabled = defaults["enabled"]
             else:
                 db.add(Plan(**defaults))
         if DEFAULT_PLANS:
+            db.commit()
+
+        existing_hero_slots = {slide.slot_index for slide in db.query(HeroSlide).all()}
+        missing_hero_slots = [slot_index for slot_index in range(1, 4) if slot_index not in existing_hero_slots]
+        for slot_index in missing_hero_slots:
+            db.add(HeroSlide(slot_index=slot_index))
+        if missing_hero_slots:
+            db.commit()
+
+        if not db.query(ClientUpdateConfig).filter(ClientUpdateConfig.id == 1).first():
+            db.add(
+                ClientUpdateConfig(
+                    id=1,
+                    latest_version="0.1.0",
+                    force_update_enabled=False,
+                    message="当前软件版本已停用，请下载最新版本后继续使用。",
+                )
+            )
             db.commit()
 
         if not db.query(AdminUser).first():

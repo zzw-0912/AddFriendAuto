@@ -1,0 +1,3011 @@
+{
+  "version": "2.0",
+  "format_type": "behavior_tree_editor",
+  "canvas": {
+    "name": "未命名",
+    "description": "",
+    "viewport": {
+      "zoom": 0.36602500000000016,
+      "offset_x": -232.40605774765072,
+      "offset_y": 220.8041329624299
+    }
+  },
+  "root_node": "node_150",
+  "nodes": {
+    "node_start": {
+      "id": "node_start",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {
+        "repeat_count": "0",
+        "repeat_interval_ms": "2000",
+        "window_hwnd": 23797028,
+        "window_title": "添加朋友",
+        "window_pid": 21740,
+        "bind_window": true,
+        "keep_foreground": true
+      },
+      "position": {
+        "x": 1900,
+        "y": 180.0
+      },
+      "children": [
+        "node_15"
+      ]
+    },
+    "node_15": {
+      "id": "node_15",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": true,
+      "config": {
+        "continue_on_failure": true
+      },
+      "position": {
+        "x": 2080,
+        "y": 180.0
+      },
+      "children": [
+        "node_17"
+      ]
+    },
+    "node_17": {
+      "id": "node_17",
+      "type": "ImageConditionNode",
+      "name": "搜索手机号",
+      "enabled": true,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1382
+        ],
+        "template_path": "./images/templates/template_20260615_142807.png",
+        "threshold": "20",
+        "name": "搜索手机号",
+        "enabled": true,
+        "dpi_base": "125%"
+      },
+      "position": {
+        "x": 2260,
+        "y": 180.0
+      },
+      "children": [
+        "node_18"
+      ]
+    },
+    "node_18": {
+      "id": "node_18",
+      "type": "MouseClickNode",
+      "name": "点击搜索手机号",
+      "enabled": true,
+      "config": {
+        "use_blackboard": true,
+        "duration_random": 10,
+        "x_float": 25,
+        "y_float": "10",
+        "click_interval_random": 10,
+        "name": "点击搜索手机号"
+      },
+      "position": {
+        "x": 2440,
+        "y": 180.0
+      },
+      "children": [
+        "node_19"
+      ]
+    },
+    "node_19": {
+      "id": "node_19",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300",
+        "name": "延时"
+      },
+      "position": {
+        "x": 2620,
+        "y": 180.0
+      },
+      "children": [
+        "node_64",
+        "node_22"
+      ]
+    },
+    "node_21": {
+      "id": "node_21",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 8000,
+        "duration_ms_random": "200"
+      },
+      "position": {
+        "x": 3160,
+        "y": 260.0
+      },
+      "children": [
+        "node_16"
+      ]
+    },
+    "node_22": {
+      "id": "node_22",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2400,
+        "duration_ms_random": "300"
+      },
+      "position": {
+        "x": 2800,
+        "y": 260.0
+      },
+      "children": [
+        "node_23"
+      ]
+    },
+    "node_23": {
+      "id": "node_23",
+      "type": "KeyPressNode",
+      "name": "回车",
+      "enabled": true,
+      "config": {
+        "key": "enter",
+        "duration": "60",
+        "duration_random": 10,
+        "name": "回车",
+        "repeat_interval_ms_random": "10"
+      },
+      "position": {
+        "x": 2980,
+        "y": 260.0
+      },
+      "children": [
+        "node_21"
+      ]
+    },
+    "node_24": {
+      "id": "node_24",
+      "type": "MouseClickNode",
+      "name": "点击通讯录",
+      "enabled": true,
+      "config": {
+        "use_blackboard": true,
+        "click_interval_random": 10,
+        "y_float": "10",
+        "name": "点击通讯录",
+        "duration_random": 10,
+        "x_float": 10
+      },
+      "position": {
+        "x": 3700,
+        "y": 260.0
+      },
+      "children": [
+        "node_27"
+      ]
+    },
+    "node_25": {
+      "id": "node_25",
+      "type": "ImageConditionNode",
+      "name": "发送添加好友申请",
+      "enabled": true,
+      "config": {
+        "region": [
+          0,
+          0,
+          2557,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "threshold": 50,
+        "offset": [
+          2,
+          55
+        ],
+        "name": "发送添加好友申请",
+        "enabled": true
+      },
+      "position": {
+        "x": 4240,
+        "y": 260.0
+      },
+      "children": [
+        "node_26"
+      ]
+    },
+    "node_26": {
+      "id": "node_26",
+      "type": "MouseClickNode",
+      "name": "点击申请语",
+      "enabled": true,
+      "config": {
+        "name": "点击申请语",
+        "use_blackboard": true,
+        "click_interval": "100",
+        "x_float": 10,
+        "y_float": "20"
+      },
+      "position": {
+        "x": 4420,
+        "y": 260.0
+      },
+      "children": [
+        "node_28"
+      ]
+    },
+    "node_27": {
+      "id": "node_27",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300"
+      },
+      "position": {
+        "x": 3880,
+        "y": 260.0
+      },
+      "children": [
+        "node_137"
+      ]
+    },
+    "node_28": {
+      "id": "node_28",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "250"
+      },
+      "position": {
+        "x": 4600,
+        "y": 260.0
+      },
+      "children": [
+        "node_29"
+      ]
+    },
+    "node_29": {
+      "id": "node_29",
+      "type": "TextInputNode",
+      "name": "输入申请语",
+      "enabled": true,
+      "config": {
+        "input_mode": "预设文本",
+        "name": "输入申请语",
+        "preset_texts": [
+          "你好，本人扎根水头世界石都，主营石材全流程技术服务，业务全覆盖：\n\n石材图纸深化、拆图下单、提量结算、异形/曲面石材（可驻工厂技术指导）\n有机会可以合作🤝🤝"
+        ],
+        "clear_before_input": true,
+        "input_delay": 150,
+        "repeat_interval_ms_random": "10"
+      },
+      "position": {
+        "x": 4780,
+        "y": 260.0
+      },
+      "children": [
+        "node_30"
+      ]
+    },
+    "node_30": {
+      "id": "node_30",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300"
+      },
+      "position": {
+        "x": 4960,
+        "y": 260.0
+      },
+      "children": [
+        "node_84"
+      ]
+    },
+    "node_31": {
+      "id": "node_31",
+      "type": "ImageConditionNode",
+      "name": "确定",
+      "enabled": false,
+      "config": {
+        "name": "确定",
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "threshold": "20",
+        "offset": [
+          54,
+          714
+        ],
+        "enabled": false
+      },
+      "position": {
+        "x": 7478.393924670959,
+        "y": 158.08004993975146
+      }
+    },
+    "node_32": {
+      "id": "node_32",
+      "type": "MouseClickNode",
+      "name": "点击确定",
+      "enabled": true,
+      "config": {
+        "use_blackboard": true,
+        "duration_random": 15,
+        "click_interval_random": 10,
+        "x_float": 5,
+        "y_float": 5,
+        "name": "点击确定",
+        "enabled": true
+      },
+      "position": {
+        "x": 7660,
+        "y": 260.0
+      },
+      "children": [
+        "node_33"
+      ]
+    },
+    "node_33": {
+      "id": "node_33",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "250",
+        "enabled": true
+      },
+      "position": {
+        "x": 7840,
+        "y": 260.0
+      },
+      "children": [
+        "node_47"
+      ]
+    },
+    "node_1": {
+      "id": "node_1",
+      "type": "ImageConditionNode",
+      "name": "标签",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260628_190550.png",
+        "threshold": 50,
+        "offset": [
+          0,
+          0
+        ],
+        "name": "标签",
+        "enabled": false
+      },
+      "position": {
+        "x": 5167.759116838926,
+        "y": 61.059662654361745
+      }
+    },
+    "node_2": {
+      "id": "node_2",
+      "type": "MouseClickNode",
+      "name": "点击标签",
+      "enabled": true,
+      "config": {
+        "duration_random": 10,
+        "use_blackboard": true,
+        "click_interval_random": 0,
+        "x_float": 10,
+        "y_float": "3",
+        "name": "点击标签"
+      },
+      "position": {
+        "x": 5318.725476729159,
+        "y": 258.7254767291586
+      },
+      "children": [
+        "node_6"
+      ]
+    },
+    "node_4": {
+      "id": "node_4",
+      "type": "MouseClickNode",
+      "name": "点击水头石材厂",
+      "enabled": true,
+      "config": {
+        "name": "点击水头石材厂",
+        "x_float": 10,
+        "y_float": 5,
+        "use_blackboard": true
+      },
+      "position": {
+        "x": 5860,
+        "y": 260.0
+      },
+      "children": [
+        "node_10"
+      ]
+    },
+    "node_6": {
+      "id": "node_6",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 4000,
+        "duration_ms_random": "200"
+      },
+      "position": {
+        "x": 5500,
+        "y": 260.0
+      },
+      "children": [
+        "node_83"
+      ]
+    },
+    "node_7": {
+      "id": "node_7",
+      "type": "MouseClickNode",
+      "name": "点击标签",
+      "enabled": true,
+      "config": {
+        "name": "点击标签",
+        "use_blackboard": true,
+        "x_float": 15,
+        "y_float": 10,
+        "click_interval_random": 10,
+        "duration_random": "15"
+      },
+      "position": {
+        "x": 6400,
+        "y": 260.0
+      },
+      "children": [
+        "node_9"
+      ]
+    },
+    "node_8": {
+      "id": "node_8",
+      "type": "ImageConditionNode",
+      "name": "标签",
+      "enabled": true,
+      "config": {
+        "name": "标签",
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "offset": [
+          3,
+          338
+        ],
+        "threshold": "20"
+      },
+      "position": {
+        "x": 6220,
+        "y": 260.0
+      },
+      "children": [
+        "node_7"
+      ]
+    },
+    "node_9": {
+      "id": "node_9",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "250"
+      },
+      "position": {
+        "x": 6580,
+        "y": 260.0
+      },
+      "children": [
+        "node_53"
+      ]
+    },
+    "node_10": {
+      "id": "node_10",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300"
+      },
+      "position": {
+        "x": 6040,
+        "y": 260.0
+      },
+      "children": [
+        "node_8"
+      ]
+    },
+    "node_16": {
+      "id": "node_16",
+      "type": "ImageConditionNode",
+      "name": "添加到通讯录",
+      "enabled": true,
+      "config": {
+        "region": [
+          0,
+          0,
+          2555,
+          1436
+        ],
+        "template_path": "./images/templates/template_20260615_143939.png",
+        "name": "添加到通讯录",
+        "threshold": 50,
+        "retry_count": "2"
+      },
+      "position": {
+        "x": 3340,
+        "y": 260.0
+      },
+      "children": [
+        "node_88"
+      ]
+    },
+    "node_37": {
+      "id": "node_37",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2500,
+        "duration_ms_random": "500"
+      },
+      "position": {
+        "x": 7300,
+        "y": 260.0
+      },
+      "children": [
+        "node_14"
+      ]
+    },
+    "node_13": {
+      "id": "node_13",
+      "type": "MouseClickNode",
+      "name": "点击",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 71772.78300550574,
+        "y": 74146.11817918788
+      }
+    },
+    "node_40": {
+      "id": "node_40",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 79836.04472779472,
+        "y": 82181.33683663179
+      }
+    },
+    "node_41": {
+      "id": "node_41",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 81830.44401746074,
+        "y": 81530.61129006579
+      }
+    },
+    "node_64": {
+      "id": "node_64",
+      "type": "SelectorNode",
+      "name": "选择",
+      "enabled": true,
+      "config": {
+        "retry_count": "3"
+      },
+      "position": {
+        "x": 2800,
+        "y": 140.0
+      },
+      "children": [
+        "node_65"
+      ]
+    },
+    "node_65": {
+      "id": "node_65",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": true,
+      "config": {
+        "continue_on_failure": true
+      },
+      "position": {
+        "x": 2980,
+        "y": 140.0
+      },
+      "children": [
+        "node_45",
+        "node_82"
+      ]
+    },
+    "node_85": {
+      "id": "node_85",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 41171.28719034876,
+        "y": 41541.578898456224
+      }
+    },
+    "node_137": {
+      "id": "node_137",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {
+        "bind_window": true,
+        "window_hwnd": 7344550,
+        "window_title": "申请添加朋友",
+        "window_pid": 21740,
+        "keep_foreground": true
+      },
+      "position": {
+        "x": 4060,
+        "y": 260.0
+      },
+      "children": [
+        "node_25"
+      ]
+    },
+    "node_150": {
+      "id": "node_150",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {
+        "repeat_count": 2,
+        "repeat_interval_ms": "2000"
+      },
+      "position": {
+        "x": -62.1579653609033,
+        "y": 302.0526324729228
+      },
+      "children": [
+        "node_34"
+      ]
+    },
+    "node_151": {
+      "id": "node_151",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": true,
+      "config": {
+        "continue_on_failure": true
+      },
+      "position": {
+        "x": 460,
+        "y": 300.0
+      },
+      "children": [
+        "node_39",
+        "node_42"
+      ]
+    },
+    "node_14": {
+      "id": "node_14",
+      "type": "ImageConditionNode",
+      "name": "取消",
+      "enabled": true,
+      "config": {
+        "template_path": "./images/templates/template_20260628_182808.png",
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "threshold": 25,
+        "offset": [
+          0,
+          0
+        ],
+        "name": "取消"
+      },
+      "position": {
+        "x": 7480,
+        "y": 260.0
+      },
+      "children": [
+        "node_32"
+      ]
+    },
+    "node_1771": {
+      "id": "node_1771",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": false,
+      "config": {
+        "repeat_count": "0",
+        "repeat_interval_ms": "2000",
+        "window_hwnd": 1972534,
+        "window_title": "添加朋友",
+        "window_pid": 47664,
+        "bind_window": true,
+        "enabled": false,
+        "keep_foreground": true
+      },
+      "position": {
+        "x": 1900,
+        "y": 420.0
+      },
+      "children": [
+        "node_1772"
+      ]
+    },
+    "node_1772": {
+      "id": "node_1772",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": false,
+      "config": {
+        "enabled": false,
+        "continue_on_failure": true
+      },
+      "position": {
+        "x": 2080,
+        "y": 420.0
+      },
+      "children": [
+        "node_1773"
+      ]
+    },
+    "node_1773": {
+      "id": "node_1773",
+      "type": "ImageConditionNode",
+      "name": "搜索手机号",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1382
+        ],
+        "template_path": "./images/templates/template_20260615_142807.png",
+        "threshold": "20",
+        "name": "搜索手机号",
+        "enabled": false
+      },
+      "position": {
+        "x": 2260,
+        "y": 420.0
+      },
+      "children": [
+        "node_1774"
+      ]
+    },
+    "node_1774": {
+      "id": "node_1774",
+      "type": "MouseClickNode",
+      "name": "点击搜索手机号",
+      "enabled": false,
+      "config": {
+        "use_blackboard": true,
+        "duration_random": 10,
+        "x_float": 25,
+        "y_float": "10",
+        "click_interval_random": 10,
+        "name": "点击搜索手机号",
+        "enabled": false
+      },
+      "position": {
+        "x": 2440,
+        "y": 420.0
+      },
+      "children": [
+        "node_1775"
+      ]
+    },
+    "node_1775": {
+      "id": "node_1775",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300",
+        "name": "延时",
+        "enabled": false
+      },
+      "position": {
+        "x": 2620,
+        "y": 420.0
+      },
+      "children": [
+        "node_1804",
+        "node_1777"
+      ]
+    },
+    "node_1776": {
+      "id": "node_1776",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 10000,
+        "duration_ms_random": "200",
+        "enabled": false
+      },
+      "position": {
+        "x": 3160,
+        "y": 500.0
+      },
+      "children": [
+        "node_1799"
+      ]
+    },
+    "node_1777": {
+      "id": "node_1777",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2400,
+        "duration_ms_random": "300",
+        "enabled": false
+      },
+      "position": {
+        "x": 2800,
+        "y": 500.0
+      },
+      "children": [
+        "node_1778"
+      ]
+    },
+    "node_1778": {
+      "id": "node_1778",
+      "type": "KeyPressNode",
+      "name": "回车",
+      "enabled": false,
+      "config": {
+        "key": "enter",
+        "duration": "60",
+        "duration_random": 10,
+        "name": "回车",
+        "repeat_interval_ms_random": "10",
+        "enabled": false
+      },
+      "position": {
+        "x": 2980,
+        "y": 500.0
+      },
+      "children": [
+        "node_1776"
+      ]
+    },
+    "node_1779": {
+      "id": "node_1779",
+      "type": "MouseClickNode",
+      "name": "点击通讯录",
+      "enabled": false,
+      "config": {
+        "use_blackboard": true,
+        "click_interval_random": 10,
+        "y_float": "10",
+        "name": "点击通讯录",
+        "duration_random": 10,
+        "x_float": 10,
+        "enabled": false
+      },
+      "position": {
+        "x": 3700,
+        "y": 500.0
+      },
+      "children": [
+        "node_1782"
+      ]
+    },
+    "node_1780": {
+      "id": "node_1780",
+      "type": "ImageConditionNode",
+      "name": "发送添加好友申请",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2557,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "threshold": "20",
+        "offset": [
+          2,
+          55
+        ],
+        "name": "发送添加好友申请",
+        "enabled": false
+      },
+      "position": {
+        "x": 4240,
+        "y": 500.0
+      },
+      "children": [
+        "node_1781"
+      ]
+    },
+    "node_1781": {
+      "id": "node_1781",
+      "type": "MouseClickNode",
+      "name": "点击申请语",
+      "enabled": false,
+      "config": {
+        "name": "点击申请语",
+        "use_blackboard": true,
+        "click_interval": "100",
+        "x_float": 10,
+        "y_float": "20",
+        "enabled": false
+      },
+      "position": {
+        "x": 4420,
+        "y": 500.0
+      },
+      "children": [
+        "node_1783"
+      ]
+    },
+    "node_1782": {
+      "id": "node_1782",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300",
+        "enabled": false
+      },
+      "position": {
+        "x": 3880,
+        "y": 500.0
+      },
+      "children": [
+        "node_1810"
+      ]
+    },
+    "node_1783": {
+      "id": "node_1783",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "250",
+        "enabled": false
+      },
+      "position": {
+        "x": 4600,
+        "y": 500.0
+      },
+      "children": [
+        "node_1784"
+      ]
+    },
+    "node_1784": {
+      "id": "node_1784",
+      "type": "TextInputNode",
+      "name": "输入申请语",
+      "enabled": false,
+      "config": {
+        "input_mode": "预设文本",
+        "name": "输入申请语",
+        "preset_texts": [
+          "你好"
+        ],
+        "clear_before_input": true,
+        "input_delay": 50,
+        "repeat_interval_ms_random": "10",
+        "enabled": false
+      },
+      "position": {
+        "x": 4780,
+        "y": 500.0
+      },
+      "children": [
+        "node_1785"
+      ]
+    },
+    "node_1785": {
+      "id": "node_1785",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300",
+        "enabled": false
+      },
+      "position": {
+        "x": 4960,
+        "y": 500.0
+      },
+      "children": [
+        "node_1790"
+      ]
+    },
+    "node_1786": {
+      "id": "node_1786",
+      "type": "MouseClickNode",
+      "name": "点击确定",
+      "enabled": false,
+      "config": {
+        "use_blackboard": true,
+        "duration_random": 20,
+        "click_interval_random": 15,
+        "x_float": 10,
+        "y_float": "10",
+        "name": "点击确定",
+        "enabled": false
+      },
+      "position": {
+        "x": 7660,
+        "y": 500.0
+      },
+      "children": [
+        "node_1787"
+      ]
+    },
+    "node_1787": {
+      "id": "node_1787",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "250",
+        "enabled": false
+      },
+      "position": {
+        "x": 7840,
+        "y": 500.0
+      },
+      "children": [
+        "node_52"
+      ]
+    },
+    "node_1790": {
+      "id": "node_1790",
+      "type": "ImageConditionNode",
+      "name": "标签",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "threshold": 20,
+        "offset": [
+          -18,
+          340
+        ],
+        "name": "标签",
+        "enabled": false
+      },
+      "position": {
+        "x": 5140,
+        "y": 500.0
+      },
+      "children": [
+        "node_1791"
+      ]
+    },
+    "node_1791": {
+      "id": "node_1791",
+      "type": "MouseClickNode",
+      "name": "点击标签",
+      "enabled": false,
+      "config": {
+        "duration_random": 10,
+        "use_blackboard": true,
+        "click_interval_random": 0,
+        "x_float": 10,
+        "y_float": "3",
+        "name": "点击标签",
+        "enabled": false
+      },
+      "position": {
+        "x": 5320,
+        "y": 500.0
+      },
+      "children": [
+        "node_1794"
+      ]
+    },
+    "node_1792": {
+      "id": "node_1792",
+      "type": "ImageConditionNode",
+      "name": "水头石材厂",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "threshold": "20",
+        "name": "水头石材厂",
+        "offset": [
+          70,
+          518
+        ],
+        "enabled": false
+      },
+      "position": {
+        "x": 5680,
+        "y": 500.0
+      },
+      "children": [
+        "node_1793"
+      ]
+    },
+    "node_1793": {
+      "id": "node_1793",
+      "type": "MouseClickNode",
+      "name": "点击水头石材厂",
+      "enabled": false,
+      "config": {
+        "name": "点击水头石材厂",
+        "x_float": 10,
+        "y_float": 5,
+        "use_blackboard": true,
+        "enabled": false
+      },
+      "position": {
+        "x": 5860,
+        "y": 500.0
+      },
+      "children": [
+        "node_1798"
+      ]
+    },
+    "node_1794": {
+      "id": "node_1794",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 4000,
+        "duration_ms_random": "200",
+        "enabled": false
+      },
+      "position": {
+        "x": 5500,
+        "y": 500.0
+      },
+      "children": [
+        "node_1792"
+      ]
+    },
+    "node_1795": {
+      "id": "node_1795",
+      "type": "MouseClickNode",
+      "name": "点击标签",
+      "enabled": false,
+      "config": {
+        "name": "点击标签",
+        "use_blackboard": true,
+        "x_float": 15,
+        "y_float": 10,
+        "click_interval_random": 10,
+        "duration_random": "15",
+        "enabled": false
+      },
+      "position": {
+        "x": 6400,
+        "y": 500.0
+      },
+      "children": [
+        "node_1797"
+      ]
+    },
+    "node_1796": {
+      "id": "node_1796",
+      "type": "ImageConditionNode",
+      "name": "标签",
+      "enabled": false,
+      "config": {
+        "name": "标签",
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "offset": [
+          3,
+          338
+        ],
+        "threshold": "20",
+        "enabled": false
+      },
+      "position": {
+        "x": 6220,
+        "y": 500.0
+      },
+      "children": [
+        "node_1795"
+      ]
+    },
+    "node_1797": {
+      "id": "node_1797",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "250",
+        "enabled": false
+      },
+      "position": {
+        "x": 6580,
+        "y": 500.0
+      },
+      "children": [
+        "node_58"
+      ]
+    },
+    "node_1798": {
+      "id": "node_1798",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "300",
+        "enabled": false
+      },
+      "position": {
+        "x": 6040,
+        "y": 500.0
+      },
+      "children": [
+        "node_1796"
+      ]
+    },
+    "node_1799": {
+      "id": "node_1799",
+      "type": "ImageConditionNode",
+      "name": "添加到通讯录",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2555,
+          1436
+        ],
+        "template_path": "./images/templates/template_20260615_143939.png",
+        "name": "添加到通讯录",
+        "threshold": 20,
+        "retry_count": "2",
+        "enabled": false
+      },
+      "position": {
+        "x": 3340,
+        "y": 500.0
+      },
+      "children": [
+        "node_66"
+      ]
+    },
+    "node_1801": {
+      "id": "node_1801",
+      "type": "MouseClickNode",
+      "name": "点击备注",
+      "enabled": false,
+      "config": {
+        "name": "点击备注",
+        "button": "left",
+        "action": "press",
+        "duration": 90,
+        "duration_random": 10,
+        "use_blackboard": true,
+        "x_float": 10,
+        "y_float": "5",
+        "enabled": false
+      },
+      "position": {
+        "x": 6940,
+        "y": 500.0
+      },
+      "children": [
+        "node_1802"
+      ]
+    },
+    "node_1802": {
+      "id": "node_1802",
+      "type": "TextInputNode",
+      "name": "输入备注",
+      "enabled": false,
+      "config": {
+        "input_mode": "预设文本",
+        "preset_texts": [
+          "石材厂"
+        ],
+        "clear_before_input": true,
+        "input_delay": 100,
+        "name": "输入备注",
+        "enabled": false
+      },
+      "position": {
+        "x": 7120,
+        "y": 500.0
+      },
+      "children": [
+        "node_1803"
+      ]
+    },
+    "node_1803": {
+      "id": "node_1803",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2500,
+        "duration_ms_random": "500",
+        "enabled": false
+      },
+      "position": {
+        "x": 7300,
+        "y": 500.0
+      },
+      "children": [
+        "node_68"
+      ]
+    },
+    "node_1804": {
+      "id": "node_1804",
+      "type": "SelectorNode",
+      "name": "选择",
+      "enabled": false,
+      "config": {
+        "retry_count": "3",
+        "enabled": false
+      },
+      "position": {
+        "x": 2800,
+        "y": 380.0
+      },
+      "children": [
+        "node_1805"
+      ]
+    },
+    "node_1805": {
+      "id": "node_1805",
+      "type": "SequenceNode",
+      "name": "顺序",
+      "enabled": false,
+      "config": {
+        "enabled": false,
+        "continue_on_failure": true
+      },
+      "position": {
+        "x": 2980,
+        "y": 380.0
+      },
+      "children": [
+        "node_1806",
+        "node_1809"
+      ]
+    },
+    "node_1806": {
+      "id": "node_1806",
+      "type": "TextInputNode",
+      "name": "输入手机号",
+      "enabled": false,
+      "config": {
+        "input_mode": "预设文本",
+        "preset_texts": [
+          "13559063090",
+          "13603810859",
+          "13603400162",
+          "15639886263"
+        ],
+        "clear_before_input": true,
+        "save_input_text": true,
+        "input_delay": "120",
+        "output_key": "last_input_text",
+        "name": "输入手机号",
+        "enabled": false
+      },
+      "position": {
+        "x": 3160,
+        "y": 340.0
+      },
+      "children": [
+        "node_1807"
+      ]
+    },
+    "node_1807": {
+      "id": "node_1807",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 1000,
+        "duration_ms_random": "100",
+        "enabled": false
+      },
+      "position": {
+        "x": 3340,
+        "y": 340.0
+      },
+      "children": [
+        "node_1808"
+      ]
+    },
+    "node_1808": {
+      "id": "node_1808",
+      "type": "TextExtractNode",
+      "name": "提取输入的手机号",
+      "enabled": false,
+      "config": {
+        "region": [
+          69,
+          76,
+          258,
+          108
+        ],
+        "name": "提取输入的手机号",
+        "enabled": false
+      },
+      "position": {
+        "x": 3520,
+        "y": 340.0
+      }
+    },
+    "node_1809": {
+      "id": "node_1809",
+      "type": "VariableConditionNode",
+      "name": "判断是否输入正确",
+      "enabled": false,
+      "config": {
+        "variable_name": "last_extracted_text",
+        "compare_type": "variable",
+        "compare_variable": "last_input_text",
+        "compare_value": "",
+        "name": "判断是否输入正确",
+        "enabled": false
+      },
+      "position": {
+        "x": 3160,
+        "y": 420.0
+      }
+    },
+    "node_1810": {
+      "id": "node_1810",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": false,
+      "config": {
+        "bind_window": true,
+        "window_hwnd": 7344550,
+        "window_title": "申请添加朋友",
+        "window_pid": 21740,
+        "enabled": false,
+        "keep_foreground": true
+      },
+      "position": {
+        "x": 4060,
+        "y": 500.0
+      },
+      "children": [
+        "node_1780"
+      ]
+    },
+    "node_1812": {
+      "id": "node_1812",
+      "type": "ImageConditionNode",
+      "name": "图像匹配",
+      "enabled": true,
+      "config": {
+        "region": [
+          3,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260622_182748.png",
+        "dpi_base": "125%"
+      },
+      "position": {
+        "x": 820,
+        "y": 180.0
+      },
+      "children": [
+        "node_1813"
+      ]
+    },
+    "node_1813": {
+      "id": "node_1813",
+      "type": "MouseClickNode",
+      "name": "点击",
+      "enabled": true,
+      "config": {
+        "use_blackboard": true,
+        "button": "left",
+        "action": "press",
+        "duration_random": 10,
+        "duration": 90
+      },
+      "position": {
+        "x": 1000,
+        "y": 180.0
+      },
+      "children": [
+        "node_36"
+      ]
+    },
+    "node_1814": {
+      "id": "node_1814",
+      "type": "ImageConditionNode",
+      "name": "图像匹配",
+      "enabled": true,
+      "config": {
+        "region": [
+          3,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260622_182748.png",
+        "offset": [
+          -26,
+          104
+        ],
+        "threshold": 50,
+        "enabled": true,
+        "dpi_base": "125%"
+      },
+      "position": {
+        "x": 1360,
+        "y": 180.0
+      },
+      "children": [
+        "node_1815"
+      ]
+    },
+    "node_1815": {
+      "id": "node_1815",
+      "type": "MouseClickNode",
+      "name": "点击",
+      "enabled": true,
+      "config": {
+        "use_blackboard": true,
+        "duration": 50,
+        "duration_random": 10
+      },
+      "position": {
+        "x": 1540,
+        "y": 180.0
+      },
+      "children": [
+        "node_1824"
+      ]
+    },
+    "node_1817": {
+      "id": "node_1817",
+      "type": "ImageConditionNode",
+      "name": "图像匹配",
+      "enabled": false,
+      "config": {
+        "region": [
+          3,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260622_182748.png",
+        "enabled": false
+      },
+      "position": {
+        "x": 820,
+        "y": 420.0
+      },
+      "children": [
+        "node_1818"
+      ]
+    },
+    "node_1818": {
+      "id": "node_1818",
+      "type": "MouseClickNode",
+      "name": "点击",
+      "enabled": false,
+      "config": {
+        "use_blackboard": true,
+        "enabled": false,
+        "duration": 80,
+        "duration_random": 10
+      },
+      "position": {
+        "x": 1000,
+        "y": 420.0
+      },
+      "children": [
+        "node_38"
+      ]
+    },
+    "node_1824": {
+      "id": "node_1824",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 1000
+      },
+      "position": {
+        "x": 1720,
+        "y": 180.0
+      },
+      "children": [
+        "node_start"
+      ]
+    },
+    "node_1825": {
+      "id": "node_1825",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 1000,
+        "enabled": false
+      },
+      "position": {
+        "x": 1720,
+        "y": 420.0
+      },
+      "children": [
+        "node_1771"
+      ]
+    },
+    "node_36": {
+      "id": "node_36",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": "2000",
+        "duration_ms_random": 200
+      },
+      "position": {
+        "x": 1180,
+        "y": 180.0
+      },
+      "children": [
+        "node_1814"
+      ]
+    },
+    "node_38": {
+      "id": "node_38",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": "2000",
+        "enabled": false,
+        "duration_ms_random": "200"
+      },
+      "position": {
+        "x": 1180,
+        "y": 420.0
+      },
+      "children": [
+        "node_43"
+      ]
+    },
+    "node_39": {
+      "id": "node_39",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {
+        "window_hwnd": 1314860,
+        "window_title": "微信",
+        "window_pid": 21740,
+        "bind_window": true,
+        "keep_foreground": true
+      },
+      "position": {
+        "x": 640,
+        "y": 180.0
+      },
+      "children": [
+        "node_1812"
+      ]
+    },
+    "node_42": {
+      "id": "node_42",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": false,
+      "config": {
+        "window_hwnd": 7410204,
+        "window_title": "微信",
+        "window_pid": 47664,
+        "bind_window": true,
+        "keep_foreground": true,
+        "enabled": false
+      },
+      "position": {
+        "x": 640,
+        "y": 420.0
+      },
+      "children": [
+        "node_1817"
+      ]
+    },
+    "node_47": {
+      "id": "node_47",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {
+        "bind_window": true,
+        "window_hwnd": 1712026,
+        "window_title": "添加朋友",
+        "window_pid": 21740,
+        "keep_foreground": true
+      },
+      "position": {
+        "x": 8020,
+        "y": 260.0
+      },
+      "children": [
+        "node_48"
+      ]
+    },
+    "node_48": {
+      "id": "node_48",
+      "type": "ImageConditionNode",
+      "name": "叉",
+      "enabled": true,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/ScreenShot_2026-06-22_200055_523.png",
+        "threshold": "50",
+        "name": "叉",
+        "enabled": true
+      },
+      "position": {
+        "x": 8200,
+        "y": 260.0
+      },
+      "children": [
+        "node_49"
+      ]
+    },
+    "node_49": {
+      "id": "node_49",
+      "type": "MouseClickNode",
+      "name": "点击叉",
+      "enabled": true,
+      "config": {
+        "use_blackboard": true,
+        "x_float": 10,
+        "y_float": 10,
+        "click_interval_random": "15",
+        "name": "点击叉",
+        "duration_random": "10",
+        "enabled": true
+      },
+      "position": {
+        "x": 8380,
+        "y": 260.0
+      },
+      "children": [
+        "node_35"
+      ]
+    },
+    "node_50": {
+      "id": "node_50",
+      "type": "ImageConditionNode",
+      "name": "叉",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/ScreenShot_2026-06-22_200055_523.png",
+        "threshold": "20",
+        "name": "叉",
+        "enabled": false
+      },
+      "position": {
+        "x": 8200,
+        "y": 500.0
+      },
+      "children": [
+        "node_51"
+      ]
+    },
+    "node_51": {
+      "id": "node_51",
+      "type": "MouseClickNode",
+      "name": "点击叉",
+      "enabled": false,
+      "config": {
+        "use_blackboard": true,
+        "x_float": 10,
+        "y_float": 10,
+        "click_interval_random": "15",
+        "name": "点击叉",
+        "duration_random": "10",
+        "enabled": false
+      },
+      "position": {
+        "x": 8380,
+        "y": 500.0
+      },
+      "children": [
+        "node_12"
+      ]
+    },
+    "node_52": {
+      "id": "node_52",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": false,
+      "config": {
+        "window_hwnd": 2298560,
+        "window_title": "添加朋友",
+        "window_pid": 47664,
+        "bind_window": true,
+        "keep_foreground": true,
+        "enabled": false
+      },
+      "position": {
+        "x": 8020,
+        "y": 500.0
+      },
+      "children": [
+        "node_50"
+      ]
+    },
+    "node_53": {
+      "id": "node_53",
+      "type": "ImageConditionNode",
+      "name": "备注",
+      "enabled": true,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "region_mode": "fixed",
+        "threshold": 20,
+        "region_offset": [
+          1,
+          0,
+          442,
+          801
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "offset": [
+          0,
+          231
+        ],
+        "name": "备注",
+        "enabled": true
+      },
+      "position": {
+        "x": 6760,
+        "y": 260.0
+      },
+      "children": [
+        "node_54"
+      ]
+    },
+    "node_54": {
+      "id": "node_54",
+      "type": "MouseClickNode",
+      "name": "点击备注",
+      "enabled": true,
+      "config": {
+        "name": "点击备注",
+        "button": "left",
+        "action": "press",
+        "duration": 90,
+        "duration_random": 10,
+        "use_blackboard": true,
+        "x_float": "10",
+        "y_float": "5",
+        "enabled": true
+      },
+      "position": {
+        "x": 6940,
+        "y": 260.0
+      },
+      "children": [
+        "node_55"
+      ]
+    },
+    "node_55": {
+      "id": "node_55",
+      "type": "TextInputNode",
+      "name": "输入备注",
+      "enabled": true,
+      "config": {
+        "input_mode": "预设文本",
+        "preset_texts": [
+          "石材厂1",
+          "石材厂2",
+          "石材厂3"
+        ],
+        "clear_before_input": true,
+        "input_delay": 100,
+        "name": "输入备注",
+        "enabled": true
+      },
+      "position": {
+        "x": 7120,
+        "y": 260.0
+      },
+      "children": [
+        "node_37"
+      ]
+    },
+    "node_56": {
+      "id": "node_56",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 37386.36981028089,
+        "y": 30655.504699341076
+      }
+    },
+    "node_57": {
+      "id": "node_57",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 37466.36981028089,
+        "y": 30655.504699341076
+      }
+    },
+    "node_58": {
+      "id": "node_58",
+      "type": "ImageConditionNode",
+      "name": "备注",
+      "enabled": false,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "region_mode": "fixed",
+        "threshold": 20,
+        "region_offset": [
+          1,
+          0,
+          442,
+          801
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "offset": [
+          6,
+          233
+        ],
+        "name": "备注",
+        "enabled": false
+      },
+      "position": {
+        "x": 6760,
+        "y": 500.0
+      },
+      "children": [
+        "node_1801"
+      ]
+    },
+    "node_59": {
+      "id": "node_59",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 134178.0,
+        "y": 130297.0
+      }
+    },
+    "node_60": {
+      "id": "node_60",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 133518.0,
+        "y": 129077.0
+      }
+    },
+    "node_61": {
+      "id": "node_61",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 133598.0,
+        "y": 129077.0
+      }
+    },
+    "node_62": {
+      "id": "node_62",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 133678.0,
+        "y": 129077.0
+      }
+    },
+    "node_63": {
+      "id": "node_63",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 133678.0,
+        "y": 129077.0
+      }
+    },
+    "node_70": {
+      "id": "node_70",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 130866.0,
+        "y": 130405.0
+      }
+    },
+    "node_71": {
+      "id": "node_71",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 130946.0,
+        "y": 130405.0
+      }
+    },
+    "node_72": {
+      "id": "node_72",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 131026.0,
+        "y": 130405.0
+      }
+    },
+    "node_73": {
+      "id": "node_73",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 131026.0,
+        "y": 130405.0
+      }
+    },
+    "node_74": {
+      "id": "node_74",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 134346.0,
+        "y": 129181.0
+      }
+    },
+    "node_75": {
+      "id": "node_75",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 134426.0,
+        "y": 129181.0
+      }
+    },
+    "node_76": {
+      "id": "node_76",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 134506.0,
+        "y": 129181.0
+      }
+    },
+    "node_77": {
+      "id": "node_77",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 134506.0,
+        "y": 129181.0
+      }
+    },
+    "node_78": {
+      "id": "node_78",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 108254.9256198347,
+        "y": 107928.80165289255
+      }
+    },
+    "node_79": {
+      "id": "node_79",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 108334.9256198347,
+        "y": 107928.80165289255
+      }
+    },
+    "node_80": {
+      "id": "node_80",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 109259.88429752064,
+        "y": 108209.79338842974
+      }
+    },
+    "node_5": {
+      "id": "node_5",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 41769.51578033723,
+        "y": 41735.79596239167
+      }
+    },
+    "node_11": {
+      "id": "node_11",
+      "type": "StartNode",
+      "name": "开始",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 41849.51578033723,
+        "y": 41735.79596239167
+      }
+    },
+    "node_88": {
+      "id": "node_88",
+      "type": "LogStatusNode",
+      "name": "日志状态",
+      "enabled": true,
+      "config": {},
+      "position": {
+        "x": 3520,
+        "y": 260.0
+      },
+      "children": [
+        "node_24"
+      ]
+    },
+    "node_20": {
+      "id": "node_20",
+      "type": "SetDisplayNode",
+      "name": "设置分辨率",
+      "enabled": false,
+      "config": {
+        "enabled": false
+      },
+      "position": {
+        "x": 100.3934492085418,
+        "y": 396.93445227387025
+      }
+    },
+    "node_34": {
+      "id": "node_34",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": "2000"
+      },
+      "position": {
+        "x": 280,
+        "y": 300.0
+      },
+      "children": [
+        "node_151"
+      ]
+    },
+    "node_12": {
+      "id": "node_12",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": false,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "200",
+        "enabled": false
+      },
+      "position": {
+        "x": 8560,
+        "y": 500.0
+      }
+    },
+    "node_35": {
+      "id": "node_35",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 2000,
+        "duration_ms_random": "200"
+      },
+      "position": {
+        "x": 8560,
+        "y": 260.0
+      }
+    },
+    "node_43": {
+      "id": "node_43",
+      "type": "ImageConditionNode",
+      "name": "图像匹配",
+      "enabled": false,
+      "config": {
+        "region": [
+          3,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260622_182748.png",
+        "offset": [
+          -26,
+          104
+        ],
+        "threshold": 50,
+        "enabled": false,
+        "dpi_base": "125%"
+      },
+      "position": {
+        "x": 1360,
+        "y": 420.0
+      },
+      "children": [
+        "node_44"
+      ]
+    },
+    "node_44": {
+      "id": "node_44",
+      "type": "MouseClickNode",
+      "name": "点击",
+      "enabled": false,
+      "config": {
+        "use_blackboard": true,
+        "duration": 50,
+        "duration_random": 10,
+        "enabled": false
+      },
+      "position": {
+        "x": 1540,
+        "y": 420.0
+      },
+      "children": [
+        "node_1825"
+      ]
+    },
+    "node_45": {
+      "id": "node_45",
+      "type": "TextInputNode",
+      "name": "输入手机号",
+      "enabled": true,
+      "config": {
+        "input_mode": "预设文本",
+        "preset_texts": [
+          "13559063090",
+          "13603810859",
+          "13603400162",
+          "15639886263"
+        ],
+        "clear_before_input": true,
+        "save_input_text": true,
+        "input_delay": "120",
+        "output_key": "last_input_text",
+        "name": "输入手机号",
+        "enabled": true,
+        "file_path": "./data/config/新建 文本文档.txt"
+      },
+      "position": {
+        "x": 3160,
+        "y": 100.0
+      },
+      "children": [
+        "node_46"
+      ]
+    },
+    "node_46": {
+      "id": "node_46",
+      "type": "DelayNode",
+      "name": "延时",
+      "enabled": true,
+      "config": {
+        "duration_ms": 1000,
+        "duration_ms_random": "100",
+        "enabled": true
+      },
+      "position": {
+        "x": 3340,
+        "y": 100.0
+      },
+      "children": [
+        "node_81"
+      ]
+    },
+    "node_81": {
+      "id": "node_81",
+      "type": "TextExtractNode",
+      "name": "提取输入的手机号",
+      "enabled": true,
+      "config": {
+        "region": [
+          69,
+          76,
+          258,
+          108
+        ],
+        "name": "提取输入的手机号",
+        "enabled": true
+      },
+      "position": {
+        "x": 3520,
+        "y": 100.0
+      }
+    },
+    "node_82": {
+      "id": "node_82",
+      "type": "VariableConditionNode",
+      "name": "判断是否输入正确",
+      "enabled": true,
+      "config": {
+        "variable_name": "last_extracted_text",
+        "compare_type": "variable",
+        "compare_variable": "last_input_text",
+        "compare_value": "",
+        "name": "判断是否输入正确",
+        "enabled": true
+      },
+      "position": {
+        "x": 3160,
+        "y": 180.0
+      }
+    },
+    "node_66": {
+      "id": "node_66",
+      "type": "LogStatusNode",
+      "name": "日志状态",
+      "enabled": false,
+      "config": {
+        "enabled": false
+      },
+      "position": {
+        "x": 3520,
+        "y": 500.0
+      },
+      "children": [
+        "node_1779"
+      ]
+    },
+    "node_67": {
+      "id": "node_67",
+      "type": "ImageConditionNode",
+      "name": "确定",
+      "enabled": false,
+      "config": {
+        "name": "确定",
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "threshold": "20",
+        "offset": [
+          54,
+          714
+        ],
+        "enabled": false
+      },
+      "position": {
+        "x": 7477.423930366485,
+        "y": 404.4916463095831
+      }
+    },
+    "node_68": {
+      "id": "node_68",
+      "type": "ImageConditionNode",
+      "name": "取消",
+      "enabled": false,
+      "config": {
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "threshold": 20,
+        "offset": [
+          193,
+          717
+        ],
+        "name": "取消",
+        "enabled": false
+      },
+      "position": {
+        "x": 7484.00864673605,
+        "y": 500.3187959766602
+      },
+      "children": [
+        "node_1786"
+      ]
+    },
+    "node_83": {
+      "id": "node_83",
+      "type": "ImageConditionNode",
+      "name": "水头石材厂",
+      "enabled": true,
+      "config": {
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "threshold": "20",
+        "name": "水头石材厂",
+        "offset": [
+          70,
+          518
+        ],
+        "enabled": true
+      },
+      "position": {
+        "x": 5682.293986470194,
+        "y": 258.8155539681182
+      },
+      "children": [
+        "node_4"
+      ]
+    },
+    "node_84": {
+      "id": "node_84",
+      "type": "ImageConditionNode",
+      "name": "标签",
+      "enabled": true,
+      "config": {
+        "name": "标签",
+        "region": [
+          0,
+          0,
+          2559,
+          1439
+        ],
+        "template_path": "./images/templates/template_20260615_144325.png",
+        "offset": [
+          3,
+          338
+        ],
+        "threshold": "20"
+      },
+      "position": {
+        "x": 5142.286762666189,
+        "y": 256.1484998083786
+      },
+      "children": [
+        "node_2"
+      ]
+    }
+  },
+  "connections": [
+    {
+      "parent_id": "node_start",
+      "child_id": "node_15"
+    },
+    {
+      "parent_id": "node_15",
+      "child_id": "node_17"
+    },
+    {
+      "parent_id": "node_17",
+      "child_id": "node_18"
+    },
+    {
+      "parent_id": "node_18",
+      "child_id": "node_19"
+    },
+    {
+      "parent_id": "node_19",
+      "child_id": "node_64"
+    },
+    {
+      "parent_id": "node_19",
+      "child_id": "node_22"
+    },
+    {
+      "parent_id": "node_21",
+      "child_id": "node_16"
+    },
+    {
+      "parent_id": "node_22",
+      "child_id": "node_23"
+    },
+    {
+      "parent_id": "node_23",
+      "child_id": "node_21"
+    },
+    {
+      "parent_id": "node_24",
+      "child_id": "node_27"
+    },
+    {
+      "parent_id": "node_25",
+      "child_id": "node_26"
+    },
+    {
+      "parent_id": "node_26",
+      "child_id": "node_28"
+    },
+    {
+      "parent_id": "node_27",
+      "child_id": "node_137"
+    },
+    {
+      "parent_id": "node_28",
+      "child_id": "node_29"
+    },
+    {
+      "parent_id": "node_29",
+      "child_id": "node_30"
+    },
+    {
+      "parent_id": "node_30",
+      "child_id": "node_84"
+    },
+    {
+      "parent_id": "node_32",
+      "child_id": "node_33"
+    },
+    {
+      "parent_id": "node_33",
+      "child_id": "node_47"
+    },
+    {
+      "parent_id": "node_2",
+      "child_id": "node_6"
+    },
+    {
+      "parent_id": "node_4",
+      "child_id": "node_10"
+    },
+    {
+      "parent_id": "node_6",
+      "child_id": "node_83"
+    },
+    {
+      "parent_id": "node_7",
+      "child_id": "node_9"
+    },
+    {
+      "parent_id": "node_8",
+      "child_id": "node_7"
+    },
+    {
+      "parent_id": "node_9",
+      "child_id": "node_53"
+    },
+    {
+      "parent_id": "node_10",
+      "child_id": "node_8"
+    },
+    {
+      "parent_id": "node_16",
+      "child_id": "node_88"
+    },
+    {
+      "parent_id": "node_37",
+      "child_id": "node_14"
+    },
+    {
+      "parent_id": "node_64",
+      "child_id": "node_65"
+    },
+    {
+      "parent_id": "node_65",
+      "child_id": "node_45"
+    },
+    {
+      "parent_id": "node_65",
+      "child_id": "node_82"
+    },
+    {
+      "parent_id": "node_137",
+      "child_id": "node_25"
+    },
+    {
+      "parent_id": "node_150",
+      "child_id": "node_34"
+    },
+    {
+      "parent_id": "node_151",
+      "child_id": "node_39"
+    },
+    {
+      "parent_id": "node_151",
+      "child_id": "node_42"
+    },
+    {
+      "parent_id": "node_14",
+      "child_id": "node_32"
+    },
+    {
+      "parent_id": "node_1771",
+      "child_id": "node_1772"
+    },
+    {
+      "parent_id": "node_1772",
+      "child_id": "node_1773"
+    },
+    {
+      "parent_id": "node_1773",
+      "child_id": "node_1774"
+    },
+    {
+      "parent_id": "node_1774",
+      "child_id": "node_1775"
+    },
+    {
+      "parent_id": "node_1775",
+      "child_id": "node_1804"
+    },
+    {
+      "parent_id": "node_1775",
+      "child_id": "node_1777"
+    },
+    {
+      "parent_id": "node_1776",
+      "child_id": "node_1799"
+    },
+    {
+      "parent_id": "node_1777",
+      "child_id": "node_1778"
+    },
+    {
+      "parent_id": "node_1778",
+      "child_id": "node_1776"
+    },
+    {
+      "parent_id": "node_1779",
+      "child_id": "node_1782"
+    },
+    {
+      "parent_id": "node_1780",
+      "child_id": "node_1781"
+    },
+    {
+      "parent_id": "node_1781",
+      "child_id": "node_1783"
+    },
+    {
+      "parent_id": "node_1782",
+      "child_id": "node_1810"
+    },
+    {
+      "parent_id": "node_1783",
+      "child_id": "node_1784"
+    },
+    {
+      "parent_id": "node_1784",
+      "child_id": "node_1785"
+    },
+    {
+      "parent_id": "node_1785",
+      "child_id": "node_1790"
+    },
+    {
+      "parent_id": "node_1786",
+      "child_id": "node_1787"
+    },
+    {
+      "parent_id": "node_1787",
+      "child_id": "node_52"
+    },
+    {
+      "parent_id": "node_1790",
+      "child_id": "node_1791"
+    },
+    {
+      "parent_id": "node_1791",
+      "child_id": "node_1794"
+    },
+    {
+      "parent_id": "node_1792",
+      "child_id": "node_1793"
+    },
+    {
+      "parent_id": "node_1793",
+      "child_id": "node_1798"
+    },
+    {
+      "parent_id": "node_1794",
+      "child_id": "node_1792"
+    },
+    {
+      "parent_id": "node_1795",
+      "child_id": "node_1797"
+    },
+    {
+      "parent_id": "node_1796",
+      "child_id": "node_1795"
+    },
+    {
+      "parent_id": "node_1797",
+      "child_id": "node_58"
+    },
+    {
+      "parent_id": "node_1798",
+      "child_id": "node_1796"
+    },
+    {
+      "parent_id": "node_1799",
+      "child_id": "node_66"
+    },
+    {
+      "parent_id": "node_1801",
+      "child_id": "node_1802"
+    },
+    {
+      "parent_id": "node_1802",
+      "child_id": "node_1803"
+    },
+    {
+      "parent_id": "node_1803",
+      "child_id": "node_68"
+    },
+    {
+      "parent_id": "node_1804",
+      "child_id": "node_1805"
+    },
+    {
+      "parent_id": "node_1805",
+      "child_id": "node_1806"
+    },
+    {
+      "parent_id": "node_1805",
+      "child_id": "node_1809"
+    },
+    {
+      "parent_id": "node_1806",
+      "child_id": "node_1807"
+    },
+    {
+      "parent_id": "node_1807",
+      "child_id": "node_1808"
+    },
+    {
+      "parent_id": "node_1810",
+      "child_id": "node_1780"
+    },
+    {
+      "parent_id": "node_1812",
+      "child_id": "node_1813"
+    },
+    {
+      "parent_id": "node_1813",
+      "child_id": "node_36"
+    },
+    {
+      "parent_id": "node_1814",
+      "child_id": "node_1815"
+    },
+    {
+      "parent_id": "node_1815",
+      "child_id": "node_1824"
+    },
+    {
+      "parent_id": "node_1817",
+      "child_id": "node_1818"
+    },
+    {
+      "parent_id": "node_1818",
+      "child_id": "node_38"
+    },
+    {
+      "parent_id": "node_1824",
+      "child_id": "node_start"
+    },
+    {
+      "parent_id": "node_1825",
+      "child_id": "node_1771"
+    },
+    {
+      "parent_id": "node_36",
+      "child_id": "node_1814"
+    },
+    {
+      "parent_id": "node_38",
+      "child_id": "node_43"
+    },
+    {
+      "parent_id": "node_39",
+      "child_id": "node_1812"
+    },
+    {
+      "parent_id": "node_42",
+      "child_id": "node_1817"
+    },
+    {
+      "parent_id": "node_47",
+      "child_id": "node_48"
+    },
+    {
+      "parent_id": "node_48",
+      "child_id": "node_49"
+    },
+    {
+      "parent_id": "node_49",
+      "child_id": "node_35"
+    },
+    {
+      "parent_id": "node_50",
+      "child_id": "node_51"
+    },
+    {
+      "parent_id": "node_51",
+      "child_id": "node_12"
+    },
+    {
+      "parent_id": "node_52",
+      "child_id": "node_50"
+    },
+    {
+      "parent_id": "node_53",
+      "child_id": "node_54"
+    },
+    {
+      "parent_id": "node_54",
+      "child_id": "node_55"
+    },
+    {
+      "parent_id": "node_55",
+      "child_id": "node_37"
+    },
+    {
+      "parent_id": "node_58",
+      "child_id": "node_1801"
+    },
+    {
+      "parent_id": "node_88",
+      "child_id": "node_24"
+    },
+    {
+      "parent_id": "node_34",
+      "child_id": "node_151"
+    },
+    {
+      "parent_id": "node_43",
+      "child_id": "node_44"
+    },
+    {
+      "parent_id": "node_44",
+      "child_id": "node_1825"
+    },
+    {
+      "parent_id": "node_45",
+      "child_id": "node_46"
+    },
+    {
+      "parent_id": "node_46",
+      "child_id": "node_81"
+    },
+    {
+      "parent_id": "node_66",
+      "child_id": "node_1779"
+    },
+    {
+      "parent_id": "node_68",
+      "child_id": "node_1786"
+    },
+    {
+      "parent_id": "node_83",
+      "child_id": "node_4"
+    },
+    {
+      "parent_id": "node_84",
+      "child_id": "node_2"
+    }
+  ],
+  "group_contents": {},
+  "collapsed_descendants": []
+}

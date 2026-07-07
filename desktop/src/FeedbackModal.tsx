@@ -12,6 +12,7 @@ function FeedbackModal({ apiBase, token, onClose }: Props) {
   const [previews, setPreviews] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,6 +70,7 @@ function FeedbackModal({ apiBase, token, onClose }: Props) {
 
   const handleSubmit = async () => {
     if (!content.trim()) return;
+    setErrorMessage("");
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -82,7 +84,7 @@ function FeedbackModal({ apiBase, token, onClose }: Props) {
       if (!res.ok) throw new Error(await getErrorMessage(res));
       setDone(true);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "提交失败，请稍后重试");
+      setErrorMessage(err instanceof Error ? err.message : "提交失败，请稍后重试");
     } finally {
       setSubmitting(false);
     }
@@ -137,6 +139,7 @@ function FeedbackModal({ apiBase, token, onClose }: Props) {
               </button>
               <button type="button" className="btn-cancel" onClick={onClose}>取消</button>
             </div>
+            {errorMessage && <div className="pay-error">{errorMessage}</div>}
           </>
         )}
       </div>

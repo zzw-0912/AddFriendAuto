@@ -36,8 +36,15 @@ Invoke-Step "Desktop lint" (Join-Path $Root "desktop") {
     npm run lint
 }
 
-Invoke-Step "Admin build" (Join-Path $Root "admin") {
-    npm run build
+$AdminDir = Join-Path $Root "admin"
+if (Test-Path $AdminDir) {
+    Invoke-Step "Admin build" $AdminDir {
+        npm run build
+    }
+}
+else {
+    Write-Host ""
+    Write-Host "==> Admin build skipped: admin directory is not present in this checkout." -ForegroundColor Yellow
 }
 
 Write-Host ""

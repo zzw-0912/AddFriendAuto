@@ -1,4 +1,7 @@
 import { useCallback, useRef, useState } from "react";
+import { authErrorMessage } from "./authMessages";
+import { isQqEmail, normalizeEmail, QQ_EMAIL_ONLY_MESSAGE } from "./emailValidation";
+import { isClientUpdateRequiredError } from "./api";
 import { useSendCode } from "./useSendCode";
 
 interface Props {
@@ -56,7 +59,7 @@ function BrandPanel() {
         <p className="brand-tagline">智能微信好友管理，让每一次连接都简单高效</p>
         <div className="brand-features">
           <div className="brand-feat"><span className="feat-dot" />每日自动添加好友任务</div>
-          <div className="brand-feat"><span className="feat-dot" />智能标签分组管理</div>
+          <div className="brand-feat"><span className="feat-dot" />多微信窗口独立运行</div>
           <div className="brand-feat"><span className="feat-dot" />自定义打招呼语</div>
           <div className="brand-feat"><span className="feat-dot" />实时任务进度追踪</div>
         </div>
@@ -101,20 +104,23 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) { showToast("请输入邮箱地址"); return; }
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) { showToast("请输入邮箱地址"); return; }
+    if (!isQqEmail(normalizedEmail)) { showToast(QQ_EMAIL_ONLY_MESSAGE); return; }
     if (!password) { showToast("请输入密码"); return; }
 
     setLoading(true);
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, machine_code: machineCode }),
+        body: JSON.stringify({ email: normalizedEmail, password, machine_code: machineCode }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.detail || "登录失败"); return; }
-      onLogin(data.access_token, email);
+      if (!res.ok) { showToast(authErrorMessage(data?.detail, "登录失败")); return; }
+      onLogin(data.access_token, normalizedEmail);
       showToast(remember ? "登录成功，下次将自动登录" : "登录成功");
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) return;
       showToast("无法连接服务器");
     } finally {
       setLoading(false);
@@ -122,18 +128,18 @@ function LoginForm({ apiBase, machineCode, onLogin, showToast, onGotoRegister }:
   };
 
   return (
-    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
+    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off" noValidate>
       <h2>欢迎回来</h2>
       <p className="form-sub">输入邮箱和密码登录</p>
 
       <div className="field">
         <label>邮箱地址</label>
-        <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="请输入 QQ 邮箱" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
 
       <div className="field">
         <label>密码</label>
-        <input className="input" type="password" placeholder="输入密码" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="输入密码" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
 
       <div className="check-row">
@@ -159,29 +165,40 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
   const { countdown, send } = useSendCode(apiBase, showToast);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) { showToast("请输入邮箱地址"); return; }
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) { showToast("请输入邮箱地址"); return; }
+    if (!isQqEmail(normalizedEmail)) { showToast(QQ_EMAIL_ONLY_MESSAGE); return; }
     if (!password || password.length < 6) { showToast("密码至少 6 位字符"); return; }
     if (password !== confirm) { showToast("两次输入的密码不一致"); return; }
     if (code.length < 6) { showToast("请输入 6 位验证码"); return; }
     if (!agree) { showToast("请先阅读并同意用户协议和隐私政策"); return; }
 
+    const normalizedReferralCode = referralCode.trim().toUpperCase();
     setLoading(true);
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, code, machine_code: machineCode }),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+          code,
+          machine_code: machineCode,
+          referral_code: normalizedReferralCode || null,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.detail || "注册失败"); return; }
-      onLogin(data.access_token, email);
+      if (!res.ok) { showToast(authErrorMessage(data?.detail, "注册失败")); return; }
+      onLogin(data.access_token, normalizedEmail);
       showToast("注册成功，即将自动登录");
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) return;
       showToast("无法连接服务器");
     } finally {
       setLoading(false);
@@ -189,23 +206,23 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
   };
 
   return (
-    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
+    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off" noValidate>
       <h2>创建账号</h2>
       <p className="form-sub">使用邮箱注册，设置密码后即可开始使用</p>
 
       <div className="field">
         <label>邮箱地址</label>
-        <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="请输入 QQ 邮箱" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
 
       <div className="field">
         <label>设置密码</label>
-        <input className="input" type="password" placeholder="至少 6 位字符" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="至少 6 位字符" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
 
       <div className="field">
         <label>确认密码</label>
-        <input className="input" type="password" placeholder="再次输入密码" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+        <input className="input" type="password" placeholder="再次输入密码" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </div>
 
       <div className="code-row">
@@ -216,6 +233,19 @@ function RegisterForm({ apiBase, machineCode, onLogin, showToast, onGotoLogin }:
         <button type="button" className="btn-send" style={{ marginTop: 26 }} disabled={countdown > 0} onClick={() => send(email)}>
           {countdown > 0 ? `${countdown}s 后重发` : "发送验证码"}
         </button>
+      </div>
+
+      <div className="field">
+        <label>邀请码（可选）</label>
+        <input
+          className="input"
+          type="text"
+          placeholder="填写好友推荐码"
+          maxLength={16}
+          value={referralCode}
+          onChange={(e) => setReferralCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))}
+          autoComplete="off"
+        />
       </div>
 
       <div className="check-row">
@@ -246,7 +276,9 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) { showToast("请输入邮箱地址"); return; }
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) { showToast("请输入邮箱地址"); return; }
+    if (!isQqEmail(normalizedEmail)) { showToast(QQ_EMAIL_ONLY_MESSAGE); return; }
     if (!code || code.length < 6) { showToast("请输入 6 位验证码"); return; }
     if (!newPassword || newPassword.length < 6) { showToast("密码至少 6 位字符"); return; }
     if (newPassword !== confirmPassword) { showToast("两次输入的密码不一致"); return; }
@@ -255,13 +287,14 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
     try {
       const res = await fetch(`${apiBase}/auth/reset-password`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, new_password: newPassword }),
+        body: JSON.stringify({ email: normalizedEmail, code, new_password: newPassword }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.detail || "重置失败"); return; }
+      if (!res.ok) { showToast(authErrorMessage(data?.detail, "重置失败")); return; }
       showToast("密码重置成功，请使用新密码登录");
       onGotoLogin();
-    } catch {
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) return;
       showToast("无法连接服务器");
     } finally {
       setLoading(false);
@@ -269,13 +302,13 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
   };
 
   return (
-    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off">
+    <form className="auth-form visible" onSubmit={handleSubmit} autoComplete="off" noValidate>
       <h2>找回密码</h2>
       <p className="form-sub">通过邮箱验证后重置密码</p>
 
       <div className="field">
         <label>注册邮箱</label>
-        <input className="input" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type="email" placeholder="请输入 QQ 邮箱" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
 
       <div className="code-row">
@@ -290,12 +323,12 @@ function ResetForm({ apiBase, showToast, onGotoLogin }: {
 
       <div className="field">
         <label>设置密码</label>
-        <input className="input" type="password" placeholder="至少 6 位字符" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="至少 6 位字符" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
       </div>
 
       <div className="field">
         <label>确认密码</label>
-        <input className="input" type="password" placeholder="再次输入密码" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+        <input className="input" type="password" placeholder="再次输入密码" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
       </div>
 
       <button type="submit" className="btn-primary" disabled={loading}>

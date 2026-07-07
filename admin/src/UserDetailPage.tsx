@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getUserDetail, updateMembership } from "./api";
+import { deleteUser, getUserDetail, updateMembership, updateTrialQuota } from "./api";
 import type { UserDetail } from "./api";
 
 interface Props {
@@ -11,6 +11,8 @@ function UserDetailPage({ userId, onBack }: Props) {
   const [user, setUser] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [extendDays, setExtendDays] = useState(30);
+  const [trialAddAmount, setTrialAddAmount] = useState(1);
+  const [trialDeductAmount, setTrialDeductAmount] = useState(1);
   const [msg, setMsg] = useState("");
 
   const load = () => {
@@ -53,8 +55,70 @@ function UserDetailPage({ userId, onBack }: Props) {
     }
   };
 
+  const handleExpire = async () => {
+    setMsg("");
+    try {
+      const r = await updateMembership(userId, "expire");
+      setMsg(`会员已设置为过期，处理记录数: ${r.expired_count ?? 0}`);
+      load();
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const handleDeductTrial = async () => {
+    setMsg("");
+    try {
+      const amount = Math.max(1, Number(trialDeductAmount) || 1);
+      const r = await updateTrialQuota(userId, { action: "decrement", amount });
+      setMsg(`已扣减免费次数，剩余: ${r.remaining}，已用: ${r.used}`);
+      load();
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const handleAddTrial = async () => {
+    setMsg("");
+    try {
+      const amount = Math.max(1, Number(trialAddAmount) || 1);
+      const r = await updateTrialQuota(userId, { action: "increment", amount });
+      setMsg(`已增加免费次数，剩余: ${r.remaining}，总额度: ${r.total}`);
+      load();
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const handleClearTrial = async () => {
+    setMsg("");
+    try {
+      const r = await updateTrialQuota(userId, { action: "clear" });
+      setMsg(`免费次数已清零，剩余: ${r.remaining}，已用: ${r.used}`);
+      load();
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!user) return;
+    const ok = window.confirm(`确认注销用户 ${user.email}？该操作会删除账号及相关测试数据，删除后可用同一邮箱重新注册。`);
+    if (!ok) return;
+
+    setMsg("");
+    try {
+      await deleteUser(userId);
+      onBack();
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
   if (loading) return <div className="page-loading">加载中...</div>;
   if (!user) return <div className="page-loading">用户不存在</div>;
+
+  const trial = user.trial ?? { total: 20, used: 0, remaining: 20 };
 
   return (
     <div className="page">
@@ -71,6 +135,9 @@ function UserDetailPage({ userId, onBack }: Props) {
           <div><label>状态</label><span className={`badge ${user.status === "active" ? "badge-active" : "badge-inactive"}`}>{user.status}</span></div>
           <div><label>注册时间</label><span>{user.created_at?.slice(0, 19).replace("T", " ")}</span></div>
           <div><label>最近登录</label><span>{user.last_login_at?.slice(0, 19).replace("T", " ") || "-"}</span></div>
+        </div>
+        <div className="detail-actions">
+          <button className="btn-sm btn-danger" onClick={handleDeleteUser}>注销用户</button>
         </div>
       </div>
 
@@ -108,21 +175,27 @@ function UserDetailPage({ userId, onBack }: Props) {
         <div className="detail-actions">
           <label>延长天数: <input type="number" value={extendDays} onChange={(e) => setExtendDays(Number(e.target.value))} min={1} /></label>
           <button className="btn-sm" onClick={handleExtend}>延长会员</button>
+          <button className="btn-sm btn-danger" onClick={handleExpire}>会员立即过期</button>
           <button className="btn-sm btn-danger" onClick={handleFreeze}>冻结</button>
           <button className="btn-sm" onClick={handleUnfreeze}>解冻</button>
         </div>
       </div>
 
-      {user.trial && (
-        <div className="detail-section">
-          <h3>试用额度</h3>
-          <div className="detail-grid">
-            <div><label>总额度</label><span>{user.trial.total}</span></div>
-            <div><label>已用</label><span>{user.trial.used}</span></div>
-            <div><label>剩余</label><span>{user.trial.remaining}</span></div>
-          </div>
+      <div className="detail-section">
+        <h3>试用额度</h3>
+        <div className="detail-grid">
+          <div><label>总额度</label><span>{trial.total}</span></div>
+          <div><label>已用</label><span>{trial.used}</span></div>
+          <div><label>剩余</label><span>{trial.remaining}</span></div>
         </div>
-      )}
+        <div className="detail-actions">
+          <label>增加次数: <input type="number" value={trialAddAmount} onChange={(e) => setTrialAddAmount(Math.max(1, Number(e.target.value) || 1))} min={1} /></label>
+          <button className="btn-sm" onClick={handleAddTrial}>增加免费次数</button>
+          <label>扣减次数: <input type="number" value={trialDeductAmount} onChange={(e) => setTrialDeductAmount(Math.max(1, Number(e.target.value) || 1))} min={1} /></label>
+          <button className="btn-sm" onClick={handleDeductTrial}>扣减免费次数</button>
+          <button className="btn-sm btn-danger" onClick={handleClearTrial}>清零免费次数</button>
+        </div>
+      </div>
 
       {msg && <div className="form-msg">{msg}</div>}
     </div>

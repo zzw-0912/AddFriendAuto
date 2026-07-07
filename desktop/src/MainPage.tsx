@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiGet } from "./api";
 import PaymentModal from "./PaymentModal";
 import QRCodeModal from "./QRCodeModal";
 import FeedbackModal from "./FeedbackModal";
@@ -6,6 +7,7 @@ import ProfilePage from "./ProfilePage";
 import TaskCard from "./TaskCard";
 import OfflineBanner from "./OfflineBanner";
 import { useNetworkStatus } from "./useNetworkStatus";
+import { normalizeTaskDefaults } from "./localSettings";
 import {
   DEFAULT_TASK_DEFAULTS,
   TASK_DEFAULTS_STORAGE_KEY,
@@ -33,6 +35,9 @@ const BOTTOM_NAV_ITEMS = [
   { label: "我的", icon: "profile" },
 ];
 
+const MEMBER_STATUS_REFRESH_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_MAX_TASK_SLOTS = 2;
+
 const HERO_SLIDES = [
   {
     title: "智能高效 · 轻松拓展人脉",
@@ -45,18 +50,16 @@ const HERO_SLIDES = [
     cta: "了解更多",
   },
   {
-    title: "智能标签分组",
-    desc: "自动为新增好友添加标签，分类管理更方便",
+    title: "任务进度清晰可见",
+    desc: "实时查看加好友进度，多个微信窗口独立运行",
     cta: "开始使用",
   },
 ];
 
-function normalizeTaskDefaults(defaults: Partial<TaskDefaults> | null): TaskDefaults {
-  return {
-    dailyLimit: Math.min(200, Math.max(1, Number(defaults?.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
-    createTag: Boolean(defaults?.createTag),
-    greetingText: typeof defaults?.greetingText === "string" ? defaults.greetingText.trim() : DEFAULT_TASK_DEFAULTS.greetingText,
-  };
+interface HeroSlideImageConfig {
+  slot_index: number;
+  image_url: string | null;
+  updated_at?: string | null;
 }
 
 function loadTaskDefaults(): TaskDefaults {
@@ -84,10 +87,37 @@ function isMembershipExpired(status: UserStatus | null) {
   return Number.isFinite(endsAt) && endsAt <= Date.now();
 }
 
-function shouldPromptPayment(status: UserStatus | null) {
-  if (!status) return false;
-  if (status.membership.is_active) return false;
-  return status.trial.remaining <= 0 || isMembershipExpired(status);
+function msUntilNextLocalDay() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(24, 0, 5, 0);
+  return Math.max(60_000, next.getTime() - now.getTime());
+}
+
+function createDefaultHeroSlideImages(): HeroSlideImageConfig[] {
+  return HERO_SLIDES.map((_, index) => ({
+    slot_index: index + 1,
+    image_url: null,
+    updated_at: null,
+  }));
+}
+
+function normalizeHeroSlideImages(images: HeroSlideImageConfig[]): HeroSlideImageConfig[] {
+  const imageMap = new Map(images.map((image) => [image.slot_index, image]));
+  return HERO_SLIDES.map((_, index) => imageMap.get(index + 1) ?? {
+    slot_index: index + 1,
+    image_url: null,
+    updated_at: null,
+  });
+}
+
+function resolveHeroSlideImageUrl(apiBase: string, url: string) {
+  if (!url) return "";
+  if (/^(https?:)?\/\//.test(url) || url.startsWith("data:") || url.startsWith("blob:")) {
+    return url;
+  }
+  if (!apiBase) return url;
+  return `${apiBase.replace(/\/$/, "")}/${url.replace(/^\//, "")}`;
 }
 
 function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Props) {
@@ -100,6 +130,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
   const [activeNav, setActiveNav] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slidePaused, setSlidePaused] = useState(false);
+  const [heroSlideImages, setHeroSlideImages] = useState<HeroSlideImageConfig[]>(() => createDefaultHeroSlideImages());
   const [taskDefaults] = useState<TaskDefaults>(() => loadTaskDefaults());
   const [taskDefaultsVersion] = useState(0);
 
@@ -110,19 +141,53 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
       });
       if (res.status === 401 || res.status === 403) {
         onLogout();
-        return;
+        return null;
       }
-      if (res.ok) setStatus(await res.json());
+      if (res.ok) {
+        const nextStatus = await res.json() as UserStatus;
+        setStatus(nextStatus);
+        return nextStatus;
+      }
     } catch {
       // network error — OfflineBanner handles the UI feedback
     }
+    return null;
   }, [apiBase, auth.token, onLogout]);
 
+  const fetchHeroSlideImages = useCallback(async () => {
+    try {
+      const data = await apiGet<HeroSlideImageConfig[]>(apiBase, "/hero-slides");
+      setHeroSlideImages(normalizeHeroSlideImages(data));
+    } catch {
+      setHeroSlideImages(createDefaultHeroSlideImages());
+    }
+  }, [apiBase]);
+
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
-    return () => clearInterval(interval);
+    void fetchStatus();
   }, [fetchStatus]);
+
+  useEffect(() => {
+    if (activeNav !== "") return;
+    void fetchHeroSlideImages();
+  }, [activeNav, fetchHeroSlideImages]);
+
+  useEffect(() => {
+    if (!status?.membership.is_active) return;
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const timeoutId = setTimeout(() => {
+      void fetchStatus();
+      intervalId = setInterval(() => {
+        void fetchStatus();
+      }, MEMBER_STATUS_REFRESH_MS);
+    }, msUntilNextLocalDay());
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [fetchStatus, status?.membership.is_active]);
 
   useEffect(() => {
     if (slidePaused) return;
@@ -134,15 +199,12 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
 
   const formatDate = (s: string | null) => s ? s.slice(0, 10) : "";
   const planId = status?.membership.plan_id;
-  const cardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+  const rawCardCount = !status?.membership.is_active || !planId || planId === 1 ? 1 : planId === 2 ? 2 : 3;
+  const cardCount = Math.min(rawCardCount, PUBLIC_MAX_TASK_SLOTS);
+  const trialRemaining = Math.max(0, status?.trial.remaining ?? 0);
   const membershipExpired = isMembershipExpired(status);
-  const canSkipTrialPayment = (status?.trial.remaining ?? 0) > 0 && !membershipExpired;
-
-  useEffect(() => {
-    if (shouldPromptPayment(status)) {
-      setShowPayment(true);
-    }
-  }, [status]);
+  const showExpiredBadge = membershipExpired && trialRemaining <= 0;
+  const canSkipTrialPayment = trialRemaining > 0;
 
   const renderMainContent = () => {
     if (activeNav === "我的") {
@@ -166,9 +228,10 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
           <div className="tutorial-hero">
             <div>
               <h2 className="tutorial-heading">用户教程</h2>
-              <p className="tutorial-intro">按照下面 3 步完成任务配置。运行自动化前请先确认微信主窗口已打开，避免任务启动后找不到目标窗口。</p>
+              <p className="tutorial-intro">按照下面 4 步完成任务配置。运行自动化前请先确认微信主窗口已打开，避免任务启动后找不到目标窗口。</p>
             </div>
             <div className="tutorial-flow">
+              <span>绑定窗口</span>
               <span>设置限额</span>
               <span>选择招呼语</span>
               <span>开始任务</span>
@@ -179,20 +242,32 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
             <article className="tutorial-step-card">
               <div className="tutorial-step-copy">
                 <span className="tutorial-step-num">01</span>
+                <h3>先绑定微信窗口</h3>
+                <p>进入“我的”页面后，先点击“刷新窗口”，再从下拉框里选择当前已经打开的微信主窗口，最后点击“绑定”完成关联。</p>
+                <div className="tutorial-tip">每个任务卡都会固定使用对应的微信窗口。微信 1、微信 2 建议分别绑定不同的微信主窗口，避免启动任务时找错窗口。</div>
+              </div>
+              <div className="tutorial-image-frame">
+                <img src="/tutorial/wechat-binding.png" alt="绑定微信窗口" />
+              </div>
+            </article>
+
+            <article className="tutorial-step-card">
+              <div className="tutorial-step-copy">
+                <span className="tutorial-step-num">02</span>
                 <h3>设置每日微信加人人数</h3>
                 <p>在“每日限额”里填写当天希望自动添加的人数。建议先小数量测试，确认微信账号状态稳定后再逐步调整。</p>
                 <div className="tutorial-limit-guide">
                   <div className="tutorial-limit-row">
                     <strong>新号（注册 0–3 个月，未养好）</strong>
-                    <span>单日建议 <b>3–5 人</b>；每小时最多加 <b>2 人</b>；单次间隔 <b>≥ 50 分钟</b>。</span>
+                    <span>选择“新号”后自动配置每日限额 <b>5 人</b>，适合先小量稳定测试。</span>
                   </div>
                   <div className="tutorial-limit-row">
                     <strong>中期号（3 个月–1 年，实名绑卡）</strong>
-                    <span>单日建议 <b>≤ 10 人</b>；每小时不要超过 <b>5 次申请</b>。</span>
+                    <span>选择“中期号”后自动配置每日限额 <b>15 人</b>，适合稳定运行的账号。</span>
                   </div>
                   <div className="tutorial-limit-row">
                     <strong>老号（1 年以上、高活跃、无违规）</strong>
-                    <span>单日建议 <b>≤ 20 人</b>；避免连续快速添加。</span>
+                    <span>选择“老号”后自动配置每日限额 <b>30 人</b>，适合长期稳定的账号。</span>
                   </div>
                 </div>
               </div>
@@ -203,7 +278,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
 
             <article className="tutorial-step-card">
               <div className="tutorial-step-copy">
-                <span className="tutorial-step-num">02</span>
+                <span className="tutorial-step-num">03</span>
                 <h3>设置默认打招呼语</h3>
                 <p>可以手动输入招呼语，也可以点击下方 3 条默认话术快速填入。选中后仍然可以继续修改文字。</p>
                 <div className="tutorial-tip">建议使用自然、简短、不夸张的文案，减少被微信风控识别的风险。</div>
@@ -215,7 +290,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
 
             <article className="tutorial-step-card">
               <div className="tutorial-step-copy">
-                <span className="tutorial-step-num">03</span>
+                <span className="tutorial-step-num">04</span>
                 <h3>开始执行加人程序</h3>
                 <p>点击“开始任务”后会弹出自动化提示。确认后有 5 秒时间切换到微信，之后程序会接管鼠标和键盘。</p>
                 <div className="tutorial-tip">运行期间请勿操作浏览器、微信或鼠标，等待任务完成或手动停止。</div>
@@ -244,27 +319,38 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
           onMouseLeave={() => setSlidePaused(false)}
         >
           <div className="hero-track" style={{ transform: `translateX(-${currentSlide * 100}%)` }}>
-            {HERO_SLIDES.map((slide, i) => (
-              <article key={i} className="hero-slide">
-                <div className="hero-copy">
-                  <h2 className="hero-title">{slide.title}</h2>
-                  <p className="hero-desc">{slide.desc}</p>
-                  <button className="hero-cta" type="button">{slide.cta}</button>
-                </div>
-                <div className="hero-art" aria-hidden="true">
-                  <div className="hero-ring" />
-                  <div className="hero-card" />
-                  <div className="hero-sheet"><div className="hero-line" /></div>
-                  <div className="hero-avatar" />
-                  <div className="hero-plus" />
-                  <div className="hero-spark spark-a" />
-                  <div className="hero-spark spark-b" />
-                  <div className="hero-spark spark-c" />
-                  <div className="hero-dash dash-a" />
-                  <div className="hero-dash dash-b" />
-                </div>
-              </article>
-            ))}
+            {HERO_SLIDES.map((slide, i) => {
+              const heroImage = heroSlideImages[i]?.image_url ?? null;
+              return heroImage ? (
+                <article key={i} className="hero-slide hero-slide-with-image">
+                  <img
+                    className="hero-slide-full-image"
+                    src={resolveHeroSlideImageUrl(apiBase, heroImage)}
+                    alt=""
+                  />
+                </article>
+              ) : (
+                <article key={i} className="hero-slide">
+                  <div className="hero-copy">
+                    <h2 className="hero-title">{slide.title}</h2>
+                    <p className="hero-desc">{slide.desc}</p>
+                    <button className="hero-cta" type="button">{slide.cta}</button>
+                  </div>
+                  <div className="hero-art" aria-hidden="true">
+                    <div className="hero-ring" />
+                    <div className="hero-card" />
+                    <div className="hero-sheet"><div className="hero-line" /></div>
+                    <div className="hero-avatar" />
+                    <div className="hero-plus" />
+                    <div className="hero-spark spark-a" />
+                    <div className="hero-spark spark-b" />
+                    <div className="hero-spark spark-c" />
+                    <div className="hero-dash dash-a" />
+                    <div className="hero-dash dash-b" />
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           {/* Dots */}
@@ -294,6 +380,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               onStatusChange={fetchStatus}
               onOpenTutorial={() => setActiveNav("用户教程")}
               onOpenPayment={() => setShowPayment(true)}
+              onOpenProfile={() => setActiveNav("我的")}
             />
           ))}
         </div>
@@ -372,7 +459,12 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
                   <span>会员有效至 {formatDate(status.membership.ends_at)}</span>
                 </div>
               )}
-              {membershipExpired ? (
+              {!status?.membership.is_active && trialRemaining > 0 ? (
+                <div className="status-badge trial">
+                  <span className="dot" />
+                  <span>剩余试用 {trialRemaining} 次</span>
+                </div>
+              ) : showExpiredBadge ? (
                 <div className="status-badge trial">
                   <span className="dot" />
                   <span>会员已过期</span>
@@ -380,7 +472,7 @@ function MainPage({ apiBase, auth, machineCode, onLogout, onSwitchAccount }: Pro
               ) : (!status || !status.membership.is_active) && (
                 <div className="status-badge trial">
                   <span className="dot" />
-                  <span>剩余试用 {status?.trial.remaining ?? 20} 次</span>
+                  <span>剩余试用 {status ? trialRemaining : 20} 次</span>
                 </div>
               )}
               <span className="user-email">{auth.email}</span>

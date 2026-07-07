@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  ACCOUNT_AGE_PROFILE_OPTIONS,
   DEFAULT_TASK_DEFAULTS,
+  type AccountAgeProfile,
   type AutoDoorConfig,
   type TaskDefaults,
   type UserStatus,
@@ -12,9 +14,9 @@ import { readErrorDetail } from "./api";
 const APP_VERSION = "0.1.0";
 
 const DEFAULT_AUTODOOR_CONFIG: AutoDoorConfig = {
-  autodoorSourcePath: "D:\\AddFriend\\autodoor_behavior_tree",
-  projectPath: "D:\\AddFriend\\Addfriend",
-  editorExecutablePath: "D:\\AddFriend\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe",
+  autodoorSourcePath: "D:\\FriendAuto\\automation\\autodoor_behavior_tree",
+  projectPath: "D:\\FriendAuto\\automation\\Addfriend",
+  editorExecutablePath: "D:\\FriendAuto\\automation\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe",
 };
 
 interface DeviceInfo {
@@ -42,10 +44,21 @@ interface SettingsPageProps {
 }
 
 function normalizeDefaults(defaults: TaskDefaults): TaskDefaults {
+  const accountAgeProfile = ACCOUNT_AGE_PROFILE_OPTIONS.some((option) => option.value === defaults.accountAgeProfile)
+    ? defaults.accountAgeProfile as AccountAgeProfile
+    : DEFAULT_TASK_DEFAULTS.accountAgeProfile;
+  const greetingPresets = DEFAULT_TASK_DEFAULTS.greetingPresets.map((fallback, index) => {
+    const preset = defaults.greetingPresets?.[index];
+    return typeof preset === "string" ? preset.trim() : fallback;
+  });
+
   return {
+    targetType: "contact",
     dailyLimit: Math.min(200, Math.max(1, Number(defaults.dailyLimit) || DEFAULT_TASK_DEFAULTS.dailyLimit)),
-    createTag: Boolean(defaults.createTag),
+    accountAgeProfile,
+    createTag: false,
     greetingText: defaults.greetingText.trim(),
+    greetingPresets,
   };
 }
 
@@ -329,7 +342,7 @@ function SettingsPage({
       <section className="profile-card settings-card">
         <h4 className="profile-card-title">任务默认设置</h4>
         <p className="profile-card-desc">保存后会同步到未运行的任务卡</p>
-        <form className="settings-form" onSubmit={handleDefaultsSubmit}>
+        <form className="settings-form" onSubmit={handleDefaultsSubmit} noValidate>
           <div className="settings-form-grid">
             <div className="field">
               <label>每日限额</label>
@@ -342,14 +355,25 @@ function SettingsPage({
                 onChange={(e) => setDefaultsForm((prev) => ({ ...prev, dailyLimit: Number(e.target.value) }))}
               />
             </div>
-            <label className="settings-check-row">
-              <input
-                type="checkbox"
-                checked={defaultsForm.createTag}
-                onChange={(e) => setDefaultsForm((prev) => ({ ...prev, createTag: e.target.checked }))}
-              />
-              创建标签
-            </label>
+            <div className="field">
+              <label>加人间隔</label>
+              <div className="add-interval-options" role="radiogroup" aria-label="默认加人间隔">
+                {ACCOUNT_AGE_PROFILE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`add-interval-option${defaultsForm.accountAgeProfile === option.value ? " active" : ""}`}
+                    onClick={() => setDefaultsForm((prev) => ({
+                      ...prev,
+                      accountAgeProfile: option.value,
+                      dailyLimit: option.dailyLimit,
+                    }))}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="field">
             <label>打招呼语（可选）</label>
@@ -375,7 +399,7 @@ function SettingsPage({
       <section className="profile-card settings-card">
         <h4 className="profile-card-title">自动化平台设置</h4>
         <p className="profile-card-desc">配置本机 AutoDoor 源码、加好友项目和调试编辑器路径</p>
-        <form className="settings-form" onSubmit={handleAutoDoorConfigSubmit}>
+        <form className="settings-form" onSubmit={handleAutoDoorConfigSubmit} noValidate>
           <div className="settings-path-grid">
             <div className="field">
               <label>AutoDoor 源码目录</label>
@@ -383,7 +407,7 @@ function SettingsPage({
                 className="input settings-path-input"
                 value={autoDoorConfig.autodoorSourcePath}
                 onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, autodoorSourcePath: e.target.value }))}
-                placeholder="D:\\AddFriend\\autodoor_behavior_tree"
+                placeholder="D:\\FriendAuto\\automation\\autodoor_behavior_tree"
                 disabled={autoDoorLoading}
               />
             </div>
@@ -393,7 +417,7 @@ function SettingsPage({
                 className="input settings-path-input"
                 value={autoDoorConfig.projectPath}
                 onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, projectPath: e.target.value }))}
-                placeholder="D:\\AddFriend\\Addfriend"
+                placeholder="D:\\FriendAuto\\automation\\Addfriend"
                 disabled={autoDoorLoading}
               />
             </div>
@@ -403,7 +427,7 @@ function SettingsPage({
                 className="input settings-path-input"
                 value={autoDoorConfig.editorExecutablePath}
                 onChange={(e) => setAutoDoorConfig((prev) => ({ ...prev, editorExecutablePath: e.target.value }))}
-                placeholder="D:\\AddFriend\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe"
+                placeholder="D:\\FriendAuto\\automation\\autodoor_behavior_tree\\dist\\autodoor-behaviortree-1.6.0\\autodoor-behaviortree-1.6.0.exe"
                 disabled={autoDoorLoading}
               />
             </div>
@@ -422,7 +446,7 @@ function SettingsPage({
       <section className="profile-card settings-card">
         <h4 className="profile-card-title">修改密码</h4>
         <p className="profile-card-desc">通过当前登录邮箱验证后修改密码</p>
-        <form className="settings-form" onSubmit={handlePasswordReset}>
+        <form className="settings-form" onSubmit={handlePasswordReset} noValidate>
           <div className="field">
             <label>邮箱地址</label>
             <input className="input" type="email" value={email} disabled />

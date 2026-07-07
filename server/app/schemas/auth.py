@@ -19,6 +19,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=6, max_length=128)
     code: str = Field(pattern=CODE_PATTERN)
     machine_code: str = Field(min_length=1, max_length=255)
+    referral_code: str | None = Field(default=None, max_length=16)
 
 
 class ResetPasswordRequest(BaseModel):

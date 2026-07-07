@@ -1,0 +1,193 @@
+# GitHub Actions 配置文件
+# 实现 Windows 统一版自动构建（DD/Normal 合并为单一版本）
+# 适配模块化架构 v2.3.0
+name: AutoDoor BehaviorTree Build and Release
+
+on:
+  push:
+    branches: [ master, refactor, test, behavior_tree, debug ]
+    tags: [ 'autodoor_V*' ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type (major/minor/patch)'
+        required: false
+        default: 'patch'
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  build-windows:
+    name: Build Windows (Unified)
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Get version from build_config.json
+      id: get_version
+      run: |
+        $VERSION = (Get-Content build_config.json | ConvertFrom-Json).version
+        Write-Host "Version: $VERSION"
+        echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt pyinstaller
+
+    - name: Generate build info
+      run: |
+        python generate_build_info.py
+        Write-Host "Generated build_info.json:"
+        Get-Content bt_utils/build_info.json
+
+    - name: Verify module structure
+      run: |
+        Write-Host "Verifying module structure..."
+        $modules = @("bt_core", "bt_gui", "bt_nodes", "bt_utils", "config")
+        foreach ($module in $modules) {
+          if (Test-Path "${{ github.workspace }}\$module") {
+            Write-Host "OK Module '$module' found"
+            Get-ChildItem "${{ github.workspace }}\$module" | Select-Object Name
+          } else {
+            Write-Host "ERROR Module '$module' not found"
+            exit 1
+          }
+        }
+
+    - name: Verify DD driver file
+      run: |
+        if (Test-Path "${{ github.workspace }}\drivers\DD64.dll") {
+          Write-Host "OK DD64.dll found"
+          Get-Item "${{ github.workspace }}\drivers\DD64.dll" | Select-Object Name, Length
+        } else {
+          Write-Host "WARN DD64.dll not found in drivers directory"
+        }
+
+    - name: Verify RapidOCR installation
+      run: |
+        python -c "import rapidocr; print('RapidOCR version:', rapidocr.__version__)"
+        python -c "import onnxruntime; print('ONNX Runtime version:', onnxruntime.__version__)"
+
+    - name: Build Unified Version with PyInstaller
+      run: pyinstaller autodoor_bt.spec --noconfirm
+
+    - name: Verify build output
+      run: |
+        $VERSION = "${{ steps.get_version.outputs.VERSION }}"
+        $EXE_NAME = "autodoor-behaviortree-$VERSION.exe"
+        $DIR_NAME = "autodoor-behaviortree-$VERSION"
+        
+        if (Test-Path "${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME") {
+          Write-Host "OK Build successful: $EXE_NAME found"
+          Get-Item "${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME" | Select-Object Name, Length, LastWriteTime
+          if (Test-Path "${{ github.workspace }}\dist\$DIR_NAME\drivers\DD64.dll") {
+            Write-Host "OK DD64.dll included in build"
+          } else {
+            Write-Host "WARN DD64.dll not found in build output"
+          }
+        } else {
+          Write-Host "ERROR Build failed: $EXE_NAME not found"
+          Write-Host "Looking for: ${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME"
+          exit 1
+        }
+
+    - name: Archive Windows build
+      uses: actions/upload-artifact@v4
+      with:
+        name: autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}
+        path: dist/autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}
+
+  deploy:
+    name: Deploy to GitHub Releases
+    runs-on: ubuntu-latest
+    needs: [build-windows]
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/autodoor_V')
+    permissions:
+      contents: write
+      actions: read
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Install zip command
+      run: sudo apt-get update && sudo apt-get install -y zip jq
+
+    - name: Get current version from build_config.json
+      id: get_version
+      run: |
+        VERSION=$(jq -r '.version' build_config.json)
+        
+        if [[ -z "$VERSION" ]]; then
+          VERSION=$(git tag -l "v*" | sort -V | tail -n 1 | sed 's/^v//' || echo "0.0.0")
+        fi
+        
+        echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+        echo "_TAG=v${VERSION}" >> $GITHUB_OUTPUT
+        echo "_autodoor_TAG=autodoor_V${VERSION}" >> $GITHUB_OUTPUT
+
+    - name: Check if need to create tag
+      id: check_tag
+      run: |
+        CURRENT_TAG="v${{ steps.get_version.outputs.VERSION }}"
+        AUTODOOR_TAG="${{ steps.get_version.outputs._autodoor_TAG }}"
+        
+        echo "Current version: $CURRENT_TAG"
+        echo "Autodoor tag: $AUTODOOR_TAG"
+        
+        TAG_EXISTS=$(git tag -l "$AUTODOOR_TAG" | wc -l)
+        
+        if [[ "$TAG_EXISTS" == "0" ]]; then
+          echo "Tag not exists, need to create"
+          echo "CREATE_TAG=true" >> $GITHUB_OUTPUT
+        else
+          echo "Tag already exists, skip creation"
+          echo "CREATE_TAG=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create tag if needed
+      if: steps.check_tag.outputs.CREATE_TAG == 'true'
+      run: |
+        git config --global user.email "61274520+wdhq4261761@users.noreply.github.com"
+        git config --global user.name "wdhq4261761"
+        
+        TAG_NAME="${{ steps.get_version.outputs._autodoor_TAG }}"
+        git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+        git push origin "$TAG_NAME"
+        echo "Created and pushed tag: $TAG_NAME"
+
+    - name: Download Windows build
+      uses: actions/download-artifact@v4
+      with:
+        name: autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}
+        path: windows-build
+
+    - name: Create zip archive
+      run: |
+        zip -r autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}.zip windows-build/
+
+    - name: Create Release and upload assets
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        name: Release ${{ steps.get_version.outputs.VERSION }}
+        body_path: UPDATE_CONTENT.md
+        draft: false
+        prerelease: false
+        files: |
+          autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}.zip

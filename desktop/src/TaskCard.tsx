@@ -8,9 +8,10 @@ interface Props {
   slotId: number;
   taskDefaults: TaskDefaults;
   taskDefaultsVersion: number;
-  onStatusChange: () => void;
+  onStatusChange: (options?: { force?: boolean }) => void | Promise<unknown>;
   onOpenTutorial: () => void;
   onOpenPayment: () => void;
+  onOpenProfile: () => void;
 }
 
 function TaskCard({
@@ -23,6 +24,7 @@ function TaskCard({
   onStatusChange,
   onOpenTutorial,
   onOpenPayment,
+  onOpenProfile,
 }: Props) {
   return (
     <section className="task-card">
@@ -36,6 +38,7 @@ function TaskCard({
         onStatusChange={onStatusChange}
         onOpenTutorial={onOpenTutorial}
         onOpenPayment={onOpenPayment}
+        onOpenProfile={onOpenProfile}
       />
     </section>
   );

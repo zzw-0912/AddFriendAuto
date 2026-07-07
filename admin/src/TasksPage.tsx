@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { getTasks, getTaskResults } from "./api";
 import type { PageResponse, TaskListItem, TaskResultItem } from "./api";
 
+function targetTypeLabel(type?: string | null) {
+  if (type === "contact") return "联系人";
+  return type === "wechat_id" ? "微信号" : "手机号";
+}
+
 function TasksPage() {
   const [data, setData] = useState<PageResponse<TaskListItem> | null>(null);
   const [page, setPage] = useState(1);
@@ -50,6 +55,7 @@ function TasksPage() {
                 <th>ID</th>
                 <th>用户</th>
                 <th>微信</th>
+                <th>目标类型</th>
                 <th>每日限额</th>
                 <th>状态</th>
                 <th>成功/失败/无效</th>
@@ -64,6 +70,7 @@ function TasksPage() {
                   <td>{t.id}</td>
                   <td>{t.email || `#${t.user_id}`}</td>
                   <td>微信{t.slot_id}</td>
+                  <td>{targetTypeLabel(t.target_type)}</td>
                   <td>{t.daily_limit}</td>
                   <td><span className={`badge ${t.status === "running" ? "badge-warn" : "badge-active"}`}>{t.status}</span></td>
                   <td>{t.success_count}/{t.failed_count}/{t.invalid_count}</td>
@@ -93,6 +100,8 @@ function TasksPage() {
               <thead>
                 <tr>
                   <th>ID</th>
+                  <th>目标 ID</th>
+                  <th>目标类型</th>
                   <th>联系人 ID</th>
                   <th>结果</th>
                   <th>消息</th>
@@ -102,10 +111,12 @@ function TasksPage() {
               </thead>
               <tbody>
                 {results.length === 0 ? (
-                  <tr><td colSpan={6}>暂无结果</td></tr>
+                  <tr><td colSpan={8}>暂无结果</td></tr>
                 ) : results.map((r) => (
                   <tr key={r.id}>
                     <td>{r.id}</td>
+                    <td>{r.target_id ?? "-"}</td>
+                    <td>{targetTypeLabel(r.target_type)}</td>
                     <td>{r.contact_id ?? "-"}</td>
                     <td>
                       <span className={`badge ${r.result === "success" ? "badge-active" : r.result === "invalid" ? "badge-warn" : "badge-inactive"}`}>

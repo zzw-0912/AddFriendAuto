@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.membership import Membership
 from app.models.order import Order
 from app.models.plan import Plan
+from app.services.plan_visibility import is_public_plan
 
 
 def process_wechat_payment(order_no: str, db: Session) -> dict:
@@ -28,6 +29,11 @@ def process_order_payment_by_order_no(order_no: str, channel: str, db: Session) 
 
 def process_order_payment(order: Order, channel: str, db: Session) -> dict:
     """Mark an order paid and activate/extend membership once."""
+    locked_order = db.query(Order).filter(Order.id == order.id).with_for_update().first()
+    if not locked_order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    order = locked_order
+
     if order.status == "paid":
         return {
             "success": True,
@@ -44,6 +50,8 @@ def process_order_payment(order: Order, channel: str, db: Session) -> dict:
     plan = db.query(Plan).filter(Plan.id == order.plan_id).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order plan not found")
+    if not is_public_plan(plan):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order plan is disabled")
 
     now = datetime.utcnow()
     order.status = "paid"
@@ -70,7 +78,8 @@ def process_order_payment(order: Order, channel: str, db: Session) -> dict:
             Membership.status == "active",
         ).update({"status": "expired"}, synchronize_session=False)
 
-    ends_at = starts_at + timedelta(days=plan.duration_days)
+    duration_days = 30 if order.plan_id in {1, 2, 3} else plan.duration_days
+    ends_at = starts_at + timedelta(days=duration_days)
     membership = Membership(
         user_id=order.user_id,
         plan_id=order.plan_id,

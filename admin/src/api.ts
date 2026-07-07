@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE || "";
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://47.111.3.83:8001";
 
 export interface PageResponse<T> {
   items: T[];
@@ -66,6 +66,21 @@ export interface MembershipUpdateResult {
   ends_at?: string;
   frozen_count?: number;
   unfrozen_count?: number;
+  expired_count?: number;
+}
+
+export interface TrialQuotaUpdateResult {
+  success: boolean;
+  total: number;
+  used: number;
+  remaining: number;
+}
+
+export interface DeleteUserResult {
+  success: boolean;
+  deleted_user_id: number;
+  email: string;
+  deleted_counts: Record<string, number>;
 }
 
 export interface DeviceListItem extends UserDetailDevice {
@@ -100,6 +115,7 @@ export interface TaskListItem {
   email?: string | null;
   device_id: number;
   slot_id: number;
+  target_type: string;
   daily_limit: number;
   status: string;
   started_at: string;
@@ -111,6 +127,8 @@ export interface TaskListItem {
 
 export interface TaskResultItem {
   id: number;
+  target_id?: number | null;
+  target_type?: string | null;
   contact_id?: number | null;
   result: string;
   message?: string | null;
@@ -129,15 +147,6 @@ export interface AuditLogItem {
   created_at: string;
 }
 
-export interface ContactListItem {
-  id: number;
-  wechat_nickname?: string | null;
-  wechat_id?: string | null;
-  tag?: string | null;
-  status?: string | null;
-  remark?: string | null;
-}
-
 export interface FeedbackItem {
   id: number;
   user_id: number;
@@ -145,6 +154,37 @@ export interface FeedbackItem {
   content?: string;
   images?: string[] | null;
   created_at?: string;
+}
+
+export interface HeroSlideItem {
+  slot_index: number;
+  image_url?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ClientUpdateConfig {
+  latest_version: string;
+  force_update_enabled: boolean;
+  download_url?: string | null;
+  qr_image_url?: string | null;
+  message?: string | null;
+  updated_at?: string | null;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+  path: string;
+  method: string;
+  responseText: string;
+
+  constructor(message: string, status: number, path: string, method: string, responseText = "") {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.path = path;
+    this.method = method;
+    this.responseText = responseText;
+  }
 }
 
 export function resolveAssetUrl(url: string) {
@@ -172,25 +212,59 @@ export function isLoggedIn(): boolean {
   return !!getToken();
 }
 
+function parseErrorText(text: string): string {
+  if (!text) return "";
+  try {
+    const body = JSON.parse(text) as { detail?: unknown; message?: unknown };
+    if (typeof body.detail === "string") return body.detail;
+    if (typeof body.message === "string") return body.message;
+    if (body.detail) return JSON.stringify(body.detail);
+  } catch {}
+  return text.replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
-  };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  const method = (options.method || "GET").toString().toUpperCase();
+  const headers = new Headers(options.headers);
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (!isFormData && options.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (err: unknown) {
+    console.error("[admin-api] request network failed", { method, path, error: err });
+    throw new ApiRequestError(`网络请求失败：${method} ${path}`, 0, path, method);
+  }
   if (res.status === 401) {
     clearToken();
     window.location.hash = "#/login";
-    throw new Error("Unauthorized");
+    throw new ApiRequestError(`登录已失效：${method} ${path}`, 401, path, method);
   }
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `HTTP ${res.status}`);
+    const responseText = await res.text().catch(() => "");
+    const detail = parseErrorText(responseText);
+    console.error("[admin-api] request failed", {
+      method,
+      path,
+      status: res.status,
+      detail,
+      responseText: responseText.slice(0, 1000),
+    });
+    throw new ApiRequestError(
+      `请求失败：${method} ${path}，HTTP ${res.status}${detail ? `，${detail}` : ""}`,
+      res.status,
+      path,
+      method,
+      responseText,
+    );
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -217,10 +291,26 @@ export async function getUserDetail(userId: number): Promise<UserDetail> {
   return request(`/admin/users/${userId}`);
 }
 
-export async function updateMembership(userId: number, action: "extend" | "freeze" | "unfreeze", days?: number): Promise<MembershipUpdateResult> {
+export async function updateMembership(userId: number, action: "extend" | "freeze" | "unfreeze" | "expire", days?: number): Promise<MembershipUpdateResult> {
   return request(`/admin/users/${userId}/membership`, {
     method: "PATCH",
     body: JSON.stringify({ action, days }),
+  });
+}
+
+export async function updateTrialQuota(
+  userId: number,
+  data: { action: "increment" | "decrement" | "set_remaining" | "clear"; amount?: number; remaining_count?: number },
+): Promise<TrialQuotaUpdateResult> {
+  return request(`/admin/users/${userId}/trial-quota`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteUser(userId: number): Promise<DeleteUserResult> {
+  return request(`/admin/users/${userId}`, {
+    method: "DELETE",
   });
 }
 
@@ -279,12 +369,57 @@ export async function getAuditLogs(page = 1, pageSize = 20): Promise<PageRespons
   return request(`/admin/audit-logs?page=${page}&page_size=${pageSize}`);
 }
 
-export async function getContacts(page = 1, pageSize = 20, q?: string): Promise<PageResponse<ContactListItem>> {
-  let path = `/admin/contacts?page=${page}&page_size=${pageSize}`;
-  if (q) path += `&q=${encodeURIComponent(q)}`;
-  return request(path);
-}
-
 export async function getFeedback(page = 1, pageSize = 20): Promise<PageResponse<FeedbackItem>> {
   return request(`/admin/feedback?page=${page}&page_size=${pageSize}`);
+}
+
+export async function getAdminHeroSlides(): Promise<HeroSlideItem[]> {
+  return request("/admin/hero-slides");
+}
+
+export async function uploadAdminHeroSlideImage(slotIndex: number, file: File): Promise<HeroSlideItem> {
+  const formData = new FormData();
+  formData.append("image", file);
+  return request(`/admin/hero-slides/${slotIndex}/image`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function clearAdminHeroSlideImage(slotIndex: number): Promise<HeroSlideItem> {
+  return request(`/admin/hero-slides/${slotIndex}/image`, {
+    method: "DELETE",
+  });
+}
+
+export async function getAdminClientUpdateConfig(): Promise<ClientUpdateConfig> {
+  return request("/admin/client-update");
+}
+
+export async function updateAdminClientUpdateConfig(data: Partial<Pick<ClientUpdateConfig, "latest_version" | "download_url" | "message" | "force_update_enabled">>): Promise<ClientUpdateConfig> {
+  return request("/admin/client-update", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function setAdminClientForceUpdate(enabled: boolean): Promise<ClientUpdateConfig> {
+  return request(`/admin/client-update/force?enabled=${enabled ? "true" : "false"}`, {
+    method: "POST",
+  });
+}
+
+export async function uploadAdminClientUpdateQrImage(file: File): Promise<ClientUpdateConfig> {
+  const formData = new FormData();
+  formData.append("image", file);
+  return request("/admin/client-update/qr-image", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function clearAdminClientUpdateQrImage(): Promise<ClientUpdateConfig> {
+  return request("/admin/client-update/qr-image", {
+    method: "DELETE",
+  });
 }

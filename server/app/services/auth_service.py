@@ -4,6 +4,7 @@ import string
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -19,6 +20,9 @@ from app.models.email_code import EmailCode
 from app.models.user import User
 
 
+REFERRAL_BONUS_COUNT = 20
+
+
 async def send_code(email: str, db: Session) -> dict:
     recent = (
         db.query(EmailCode)
@@ -31,7 +35,7 @@ async def send_code(email: str, db: Session) -> dict:
     if recent:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Please wait 60 seconds before requesting a new code",
+            detail="请等待 60 秒后再重新获取验证码",
         )
 
     code = str(random.randint(100000, 999999))
@@ -48,7 +52,7 @@ async def send_code(email: str, db: Session) -> dict:
     from app.services.email_service import send_verification_email
     asyncio.create_task(send_verification_email(email, code))
 
-    result = {"message": "Code sent", "email": email}
+    result = {"message": "验证码已发送", "email": email}
     if settings.debug:
         result["dev_code"] = code
     if settings.debug and email == "test@friendauto.com":
@@ -72,7 +76,7 @@ def _bind_device(user_id: int, machine_code: str, db: Session):
     if user_device:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account already bound to another device. Contact admin to unbind.",
+            detail="该账号已绑定其他设备，请联系管理员解绑",
         )
 
     device = Device(user_id=user_id, machine_code_hash=mc_hash)
@@ -92,6 +96,30 @@ def _create_trial_quota(user_id: int, db: Session):
             remaining_count=20,
         )
         db.add(quota)
+
+
+def _normalize_referral_code(referral_code: str | None) -> str:
+    return (referral_code or "").strip().upper()
+
+
+def _add_referral_trial_bonus(user_id: int, bonus_count: int, db: Session):
+    from app.models.trial_quota import TrialQuota
+
+    quota = db.query(TrialQuota).filter(TrialQuota.user_id == user_id).with_for_update().first()
+    if quota:
+        quota.total_count = int(quota.total_count or 0) + bonus_count
+        quota.remaining_count = int(quota.remaining_count or 0) + bonus_count
+        return
+
+    db.add(
+        TrialQuota(
+            user_id=user_id,
+            device_id=0,
+            total_count=bonus_count,
+            used_count=0,
+            remaining_count=bonus_count,
+        )
+    )
 
 
 def _generate_referral_code(db: Session) -> str:
@@ -126,32 +154,46 @@ def login(email: str, password: str, machine_code: str, db: Session) -> dict:
         result["is_new_user"] = is_new
         return result
 
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(User.email == email).with_for_update().first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="账号不存在，请先注册")
 
     if not user.password_hash:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No password set. Please use 'Find Account' to set your password.",
+            detail="该账号还未设置密码，请通过找回密码设置新密码",
         )
 
     if not verify_password(password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect password")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="密码错误，请重新输入")
 
     is_test_account = settings.debug and email == "test@friendauto.com"
     if not is_test_account:
         _bind_device(user.id, machine_code, db)
 
     user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="设备绑定冲突，请稍后重试",
+        ) from exc
 
     result = _issue_token(user.id, email)
     result["is_new_user"] = False
     return result
 
 
-def register(email: str, password: str, code: str, machine_code: str, db: Session) -> dict:
+def register(
+    email: str,
+    password: str,
+    code: str,
+    machine_code: str,
+    db: Session,
+    referral_code: str | None = None,
+) -> dict:
     # Verify code
     valid = False
     if settings.debug and email == "test@friendauto.com" and code == "888888":
@@ -175,11 +217,26 @@ def register(email: str, password: str, code: str, machine_code: str, db: Sessio
                 break
 
     if not valid:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired code")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
 
     existing = db.query(User).filter(User.email == email).first()
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该邮箱已注册，请直接登录")
+
+    normalized_referral_code = _normalize_referral_code(referral_code)
+    referrer = None
+    if normalized_referral_code:
+        referrer = (
+            db.query(User)
+            .filter(User.referral_code == normalized_referral_code)
+            .with_for_update()
+            .first()
+        )
+        if not referrer:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邀请码不存在，请检查后重试",
+            )
 
     user = User(email=email, password_hash=hash_password(password), referral_code=_generate_referral_code(db))
     db.add(user)
@@ -187,9 +244,18 @@ def register(email: str, password: str, code: str, machine_code: str, db: Sessio
 
     _create_trial_quota(user.id, db)
     _bind_device(user.id, machine_code, db)
+    if referrer:
+        _add_referral_trial_bonus(referrer.id, REFERRAL_BONUS_COUNT, db)
 
     user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该邮箱已注册或设备已绑定，请检查后重试",
+        ) from exc
 
     result = _issue_token(user.id, email)
     result["is_new_user"] = True
@@ -216,26 +282,26 @@ def reset_password(email: str, code: str, new_password: str, db: Session) -> dic
             break
 
     if not valid:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired code")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
 
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="账号不存在，请先注册")
 
     user.password_hash = hash_password(new_password)
     db.commit()
 
-    return {"message": "Password reset successfully"}
+    return {"message": "密码重置成功"}
 
 
 def refresh(token: str, db: Session) -> dict:
     payload = decode_access_token(token)
     if payload is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录状态已失效，请重新登录")
 
     user = db.query(User).filter(User.id == payload.get("sub")).first()
     if not user or user.status != "active":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号不存在或已被停用")
 
     new_token = create_access_token({"sub": str(user.id), "email": user.email})
 
