@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { isClientUpdateRequiredError } from "./api";
+import { isClientUpdateRequiredError, readErrorDetail } from "./api";
 import { useNetworkStatus } from "./useNetworkStatus";
 import { loadTaskSlotConfig, loadWeChatBindings, normalizeTaskDefaults, saveTaskSlotConfig, saveWeChatBindings } from "./localSettings";
 import { ACCOUNT_AGE_PROFILE_OPTIONS, type AccountAgeProfile, type TargetType, type TaskDefaults, type UserStatus, type WeChatWindowBinding } from "./types";
@@ -41,12 +41,19 @@ interface TaskTarget {
 interface ClaimTargetsResponse {
   can_claim?: boolean;
   reason?: string | null;
+  reason_code?: string | null;
   task_id: number;
   target_type: TargetType;
   count: number;
   targets: TaskTarget[];
   membership?: UserStatus["membership"] | null;
   trial?: UserStatus["trial"] | null;
+}
+
+interface ActiveTaskContext {
+  taskId: number;
+  safeConfig: TaskDefaults;
+  wechatBinding: WeChatWindowBinding;
 }
 
 interface AccessSnapshot {
@@ -57,6 +64,7 @@ interface AccessSnapshot {
 interface ResultResponse {
   charged?: boolean;
   duplicate?: boolean;
+  updated?: boolean;
 }
 
 interface LogEntry {
@@ -113,6 +121,12 @@ function paymentNotice(access: AccessSnapshot | null | undefined) {
   return isMembershipExpired(access) ? "会员已过期，请充值后继续使用" : "免费额度已用完，请充值后继续使用";
 }
 
+function claimStopNotice(reasonCode?: string | null, reason?: string | null) {
+  if (reasonCode === "goal_reached") return "任务已完成";
+  if (reasonCode === "targets_exhausted") return "好友名单不足，本次任务未补满";
+  return reason || "暂无可继续添加的好友名单";
+}
+
 function TaskPanel({
   apiBase,
   token,
@@ -143,8 +157,14 @@ function TaskPanel({
   const [startCountdown, setStartCountdown] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
   const taskIdRef = useRef<number | null>(null);
+  const activeTaskContextRef = useRef<ActiveTaskContext | null>(null);
   const isFinishingRef = useRef(false);
   const hasRunErrorRef = useRef(false);
+  const resultReportFailedRef = useRef(false);
+  const manualStopRequestedRef = useRef(false);
+  const batchFinishedRef = useRef(false);
+  const batchExitHandledRef = useRef(false);
+  const successCountRef = useRef(0);
   const processedResultKeysRef = useRef<Set<string>>(new Set());
   const pendingResultReportsRef = useRef<Set<Promise<ResultResponse | null>>>(new Set());
   const lastLogTextRef = useRef("");
@@ -217,6 +237,21 @@ function TaskPanel({
     void invoke("write_client_log", { message }).catch(() => {});
   }, []);
 
+  const resetBatchLifecycle = useCallback(() => {
+    batchFinishedRef.current = false;
+    batchExitHandledRef.current = false;
+  }, []);
+
+  const requestWorkerStop = useCallback(async () => {
+    const runId = taskIdRef.current ? String(taskIdRef.current) : "";
+    if (!runId) return;
+    try {
+      await invoke("stop_task", { runId });
+    } catch {
+      // Ignore stop errors; the batch exit handler will still clean up.
+    }
+  }, []);
+
   const reportResult = useCallback(async (
     contactId: string | number | undefined,
     targetId: string | number | undefined,
@@ -253,20 +288,6 @@ function TaskPanel({
     }
   }, [apiBase, token, writeClientLog]);
 
-  const enqueueResultReport = useCallback((
-    contactId: string | number | undefined,
-    targetId: string | number | undefined,
-    event: string,
-    message: string,
-  ) => {
-    const reportPromise = reportResult(contactId, targetId, event, message);
-    pendingResultReportsRef.current.add(reportPromise);
-    void reportPromise.finally(() => {
-      pendingResultReportsRef.current.delete(reportPromise);
-    });
-    return reportPromise;
-  }, [reportResult]);
-
   const waitForPendingResultReports = useCallback(async () => {
     const pending = Array.from(pendingResultReportsRef.current);
     if (!pending.length) return;
@@ -289,9 +310,16 @@ function TaskPanel({
       writeClientLog(`task_finish_error task_id=${tid}`);
       addUniqueLog("任务状态同步失败，请稍后刷新", "error");
     }
+    activeTaskContextRef.current = null;
     setTaskId(null);
     taskIdRef.current = null;
     setIsRunning(false);
+    manualStopRequestedRef.current = false;
+    hasRunErrorRef.current = false;
+    resultReportFailedRef.current = false;
+    batchFinishedRef.current = false;
+    batchExitHandledRef.current = false;
+    successCountRef.current = 0;
     isFinishingRef.current = false;
     const latestStatus = asAccessSnapshot(await onStatusChange({ force: true }));
     addAccessLog(latestStatus);
@@ -308,6 +336,155 @@ function TaskPanel({
     addAccessLog(latestStatus);
   }, [addAccessLog, addUniqueLog, onOpenPayment, onStatusChange]);
 
+  const claimAndStartNextBatch = useCallback(async (continuation: boolean) => {
+    const context = activeTaskContextRef.current;
+    const tid = taskIdRef.current;
+    if (!context || !tid || manualStopRequestedRef.current || isFinishingRef.current) return false;
+
+    if (continuation) {
+      const message = successCountRef.current > 0
+        ? `已成功 ${successCountRef.current} 个，正在补领下一批好友名单`
+        : "正在补领下一批好友名单";
+      addUniqueLog(message, "info");
+    }
+
+    writeClientLog(`claim_targets_start task_id=${tid} continuation=${continuation}`);
+    try {
+      const claimRes = await fetch(`${apiBase}/tasks/${tid}/claim-targets`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!claimRes.ok) {
+        throw new Error((await readErrorDetail(claimRes)) || "准备任务失败");
+      }
+
+      const claimData: ClaimTargetsResponse = await claimRes.json();
+      writeClientLog(
+        `claim_targets_response task_id=${tid} continuation=${continuation} can_claim=${String(claimData.can_claim ?? true)} count=${claimData.count} reason_code=${claimData.reason_code || ""}`,
+      );
+
+      const claimAccess = asAccessSnapshot(claimData);
+      addAccessLog(claimAccess);
+      if (claimData.can_claim === false || !claimData.targets.length) {
+        addUniqueLog(claimStopNotice(claimData.reason_code, claimData.reason), claimData.reason_code === "goal_reached" ? "success" : "error");
+        await finishCurrentTask();
+        if (needsPayment(claimAccess)) {
+          onOpenPayment();
+        }
+        return false;
+      }
+
+      resetBatchLifecycle();
+      const config = {
+        run_id: String(tid),
+        task_id: tid,
+        slot_id: slotId,
+        target_type: claimData.target_type,
+        daily_limit: context.safeConfig.dailyLimit,
+        account_age_profile: context.safeConfig.accountAgeProfile,
+        create_tag: false,
+        greeting_text: context.safeConfig.greetingText,
+        wechat_binding: context.wechatBinding,
+        targets: claimData.targets,
+      };
+
+      writeClientLog(`start_batch task_id=${tid} continuation=${continuation} targets=${claimData.targets.length}`);
+      if (!continuation) {
+        addUniqueLog("正在打开微信中", "info");
+      }
+      await invoke("start_task", { configJson: JSON.stringify(config) });
+      return true;
+    } catch (error) {
+      if (isClientUpdateRequiredError(error)) {
+        clearWaitHintTimer(true);
+        activeTaskContextRef.current = null;
+        setTaskId(null);
+        taskIdRef.current = null;
+        setIsRunning(false);
+        return false;
+      }
+
+      writeClientLog(`claim_targets_error task_id=${tid} continuation=${continuation} error=${String(error)}`);
+      addUniqueLog(continuation ? "补领下一批失败，请稍后重试" : "启动失败，请稍后重试", "error");
+      if (taskIdRef.current) {
+        await finishCurrentTask();
+      } else {
+        setIsRunning(false);
+      }
+      return false;
+    }
+  }, [
+    addAccessLog,
+    addUniqueLog,
+    apiBase,
+    clearWaitHintTimer,
+    finishCurrentTask,
+    onOpenPayment,
+    resetBatchLifecycle,
+    slotId,
+    token,
+    writeClientLog,
+  ]);
+
+  const handleBatchExited = useCallback(async () => {
+    clearWaitHintTimer(true);
+    if (batchExitHandledRef.current) return;
+    batchExitHandledRef.current = true;
+    if (manualStopRequestedRef.current || isFinishingRef.current) return;
+    if (!taskIdRef.current) return;
+
+    await waitForPendingResultReports();
+    if (manualStopRequestedRef.current || isFinishingRef.current) return;
+
+    if (!batchFinishedRef.current) {
+      if (!hasRunErrorRef.current) {
+        hasRunErrorRef.current = true;
+        addUniqueLog("任务运行异常，请稍后重试", "error");
+      }
+      await finishCurrentTask();
+      return;
+    }
+
+    if (hasRunErrorRef.current || resultReportFailedRef.current) {
+      await finishCurrentTask();
+      return;
+    }
+
+    await claimAndStartNextBatch(true);
+  }, [addUniqueLog, claimAndStartNextBatch, clearWaitHintTimer, finishCurrentTask, waitForPendingResultReports]);
+
+  const queueResultReport = useCallback((
+    contactId: string | number | undefined,
+    targetId: string | number | undefined,
+    event: string,
+    message: string,
+  ) => {
+    const reportPromise = reportResult(contactId, targetId, event, message).then((result) => {
+      if (!result) {
+        if (!resultReportFailedRef.current) {
+          resultReportFailedRef.current = true;
+          hasRunErrorRef.current = true;
+          addUniqueLog("任务结果同步失败，已停止本次任务", "error");
+          void requestWorkerStop();
+        }
+        return null;
+      }
+
+      if (event === "success") {
+        successCountRef.current += 1;
+        void refreshAccessLog();
+      } else if (result.charged) {
+        void refreshAccessLog();
+      }
+      return result;
+    });
+    pendingResultReportsRef.current.add(reportPromise);
+    void reportPromise.finally(() => {
+      pendingResultReportsRef.current.delete(reportPromise);
+    });
+    return reportPromise;
+  }, [addUniqueLog, refreshAccessLog, reportResult, requestWorkerStop]);
+
   const handleScriptEvent = useCallback((event: { payload: string }) => {
     try {
       const data: ScriptEvent = JSON.parse(event.payload);
@@ -318,21 +495,7 @@ function TaskPanel({
       if (eventRunId && !currentRunId) return;
 
       if (data.event === "exited") {
-        clearWaitHintTimer(true);
-        if (hasRunErrorRef.current) {
-          if (taskIdRef.current) {
-            finishCurrentTask();
-          } else {
-            setIsRunning(false);
-          }
-          return;
-        }
-        addUniqueLog("任务已完成", "info");
-        if (taskIdRef.current) {
-          finishCurrentTask();
-        } else {
-          setIsRunning(false);
-        }
+        void handleBatchExited();
         return;
       }
 
@@ -357,37 +520,29 @@ function TaskPanel({
         case "success":
           clearWaitHintTimer(true);
           processedResultKeysRef.current.add(resultKey);
-          void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then(() => {
-            void refreshAccessLog();
-          });
+          void queueResultReport(data.contact_id, data.target_id, data.event, msg);
           break;
         case "failed":
           clearWaitHintTimer(true);
           processedResultKeysRef.current.add(resultKey);
-          void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then((result) => {
-            if (result?.charged) void refreshAccessLog();
-          });
+          void queueResultReport(data.contact_id, data.target_id, data.event, msg);
           break;
         case "invalid":
           clearWaitHintTimer(true);
           processedResultKeysRef.current.add(resultKey);
-          void enqueueResultReport(data.contact_id, data.target_id, data.event, msg).then((result) => {
-            if (result?.charged) void refreshAccessLog();
-          });
+          void queueResultReport(data.contact_id, data.target_id, data.event, msg);
           break;
         case "error":
           clearWaitHintTimer(true);
-          hasRunErrorRef.current = true;
-          addUniqueLog("任务运行异常，请稍后重试", "error");
+          if (!manualStopRequestedRef.current) {
+            hasRunErrorRef.current = true;
+            addUniqueLog("任务运行异常，请稍后重试", "error");
+            void requestWorkerStop();
+          }
           break;
         case "finished":
           clearWaitHintTimer(true);
-          if (hasRunErrorRef.current) {
-            finishCurrentTask();
-            break;
-          }
-          addUniqueLog("任务已完成", "info");
-          finishCurrentTask();
+          batchFinishedRef.current = true;
           break;
         default:
           break;
@@ -395,7 +550,7 @@ function TaskPanel({
     } catch {
       // Ignore malformed worker progress payloads; user-facing status stays on the AI step animation.
     }
-  }, [addUniqueLog, clearWaitHintTimer, enqueueResultReport, finishCurrentTask, refreshAccessLog, slotId, startWaitHintTimer]);
+  }, [addUniqueLog, clearWaitHintTimer, handleBatchExited, queueResultReport, requestWorkerStop, slotId, startWaitHintTimer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -523,7 +678,12 @@ function TaskPanel({
     setLogs([]);
     lastLogTextRef.current = "";
     lastTrialRemainingRef.current = null;
+    manualStopRequestedRef.current = false;
     hasRunErrorRef.current = false;
+    resultReportFailedRef.current = false;
+    batchFinishedRef.current = false;
+    batchExitHandledRef.current = false;
+    successCountRef.current = 0;
     processedResultKeysRef.current.clear();
     clearWaitHintTimer(true);
 
@@ -564,48 +724,15 @@ function TaskPanel({
       addAccessLog(access);
       setTaskId(data.task_id);
       taskIdRef.current = data.task_id;
+      activeTaskContextRef.current = {
+        taskId: data.task_id,
+        safeConfig,
+        wechatBinding,
+      };
       isFinishingRef.current = false;
       setIsRunning(true);
       startBootSequence();
-
-      const claimRes = await fetch(`${apiBase}/tasks/${data.task_id}/claim-targets`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const claimData: ClaimTargetsResponse = await claimRes.json();
-      if (!claimRes.ok) {
-        throw new Error((claimData as any)?.detail || "准备任务失败");
-      }
-      if (claimData.can_claim === false) {
-        const claimAccess = asAccessSnapshot(claimData);
-        addUniqueLog(claimData.reason || paymentNotice(claimAccess), "error");
-        await finishCurrentTask();
-        if (needsPayment(claimAccess)) {
-          onOpenPayment();
-        }
-        return;
-      }
-      if (!claimData.targets.length) {
-        addUniqueLog("暂无可添加的好友名单", "error");
-        await finishCurrentTask();
-        return;
-      }
-
-      const config = {
-        run_id: String(data.task_id),
-        task_id: data.task_id,
-        slot_id: slotId,
-        target_type: claimData.target_type,
-        daily_limit: dailyLimit,
-        account_age_profile: accountAgeProfile,
-        create_tag: false,
-        greeting_text: safeConfig.greetingText,
-        wechat_binding: wechatBinding,
-        targets: claimData.targets,
-      };
-
-      addUniqueLog("正在打开微信中", "info");
-      await invoke("start_task", { configJson: JSON.stringify(config) });
+      await claimAndStartNextBatch(false);
     } catch (e: any) {
       if (isClientUpdateRequiredError(e)) {
         clearWaitHintTimer(true);
@@ -673,6 +800,7 @@ function TaskPanel({
 
   const handleStop = async () => {
     clearWaitHintTimer(true);
+    manualStopRequestedRef.current = true;
     addUniqueLog("正在停止任务", "info");
     try {
       const runId = taskIdRef.current ? String(taskIdRef.current) : "";

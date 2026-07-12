@@ -29,6 +29,7 @@ import os
 import random
 import re
 import shutil
+import socket
 import ssl
 import sys
 import threading
@@ -74,6 +75,21 @@ REPEATED_TARGET_INPUT_ABORT_COUNT = 4
 TARGET_RUN_TIMEOUT_SECONDS = 180.0
 AUTOMATION_LOCK_FILE_NAME = "automation.lock"
 CLIPBOARD_LOCK_FILE_NAME = "clipboard.lock"
+LEGAL_PROBE_URLS = (
+    "https://www.zcool.com.cn/",
+    "https://www.68design.net/",
+    "https://www.ui.cn/",
+    "https://www.gtn9.com/",
+)
+LEGAL_PROBE_INTERVAL_SECONDS = 60.0
+LEGAL_PROBE_TIMEOUT_SECONDS = 8.0
+LEGAL_PROBE_MAX_BYTES = 32 * 1024
+LEGAL_PROBE_MIN_REMAINING_SECONDS = 3.0
+LEGAL_PROBE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0 Safari/537.36 FriendAuto/0.1"
+)
 ACCOUNT_AGE_INTERVALS_MS = {
     "new": (25 * 60 * 1000, 5 * 60 * 1000),
     "mid": (1050 * 1000, 150 * 1000),
@@ -535,6 +551,158 @@ def interruptible_sleep(seconds: float, run_id: Any, interval: float = 0.1) -> N
         raise_if_stop_requested(run_id)
         time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
     raise_if_stop_requested(run_id)
+
+
+def legal_probe_request(
+    url: str,
+    *,
+    run_id: Any,
+    task_id: Any,
+    target_index: int,
+    remaining_wait_ms: int,
+    timeout_seconds: float | None = None,
+) -> None:
+    timeout = max(0.5, float(timeout_seconds or LEGAL_PROBE_TIMEOUT_SECONDS))
+    started = time.monotonic()
+    append_worker_log(
+        "legal_probe_request",
+        run_id=run_id,
+        task_id=task_id,
+        target_index=target_index,
+        url=url,
+        timeout_ms=int(timeout * 1000),
+        remaining_wait_ms=remaining_wait_ms,
+    )
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": LEGAL_PROBE_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Cache-Control": "no-cache",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read(LEGAL_PROBE_MAX_BYTES)
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            append_worker_log(
+                "legal_probe_response",
+                run_id=run_id,
+                task_id=task_id,
+                target_index=target_index,
+                url=url,
+                status_code=getattr(response, "status", None) or response.getcode(),
+                elapsed_ms=elapsed_ms,
+                bytes_read=len(body or b""),
+                remaining_wait_ms=remaining_wait_ms,
+            )
+    except urllib.error.HTTPError as exc:
+        body = b""
+        with contextlib.suppress(Exception):
+            body = exc.read(LEGAL_PROBE_MAX_BYTES)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        append_worker_log(
+            "legal_probe_response",
+            run_id=run_id,
+            task_id=task_id,
+            target_index=target_index,
+            url=url,
+            status_code=exc.code,
+            http_error=True,
+            elapsed_ms=elapsed_ms,
+            bytes_read=len(body or b""),
+            remaining_wait_ms=remaining_wait_ms,
+        )
+    except (TimeoutError, socket.timeout) as exc:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        append_worker_log(
+            "legal_probe_timeout",
+            run_id=run_id,
+            task_id=task_id,
+            target_index=target_index,
+            url=url,
+            elapsed_ms=elapsed_ms,
+            remaining_wait_ms=remaining_wait_ms,
+            error=str(exc),
+        )
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        append_worker_log(
+            "legal_probe_error",
+            run_id=run_id,
+            task_id=task_id,
+            target_index=target_index,
+            url=url,
+            elapsed_ms=elapsed_ms,
+            remaining_wait_ms=remaining_wait_ms,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+
+def wait_with_legal_probes(seconds: float, run_id: Any, task_id: Any, target_index: int) -> None:
+    total_seconds = max(0.0, float(seconds))
+    deadline = time.monotonic() + total_seconds
+    probe_index = 0
+    next_probe_at = time.monotonic()
+    append_worker_log(
+        "legal_probe_start",
+        run_id=run_id,
+        task_id=task_id,
+        target_index=target_index,
+        wait_ms=int(total_seconds * 1000),
+        url_count=len(LEGAL_PROBE_URLS),
+    )
+    try:
+        while time.monotonic() < deadline:
+            raise_if_stop_requested(run_id)
+            now = time.monotonic()
+            remaining_seconds = max(0.0, deadline - now)
+            remaining_wait_ms = int(remaining_seconds * 1000)
+            if not LEGAL_PROBE_URLS:
+                time.sleep(min(0.2, remaining_seconds))
+                continue
+            if now >= next_probe_at:
+                if remaining_seconds < LEGAL_PROBE_MIN_REMAINING_SECONDS:
+                    append_worker_log(
+                        "legal_probe_skipped",
+                        run_id=run_id,
+                        task_id=task_id,
+                        target_index=target_index,
+                        reason="remaining_wait_too_short",
+                        remaining_wait_ms=remaining_wait_ms,
+                    )
+                    next_probe_at = deadline
+                    continue
+                url = LEGAL_PROBE_URLS[probe_index % len(LEGAL_PROBE_URLS)]
+                probe_index += 1
+                timeout = min(
+                    LEGAL_PROBE_TIMEOUT_SECONDS,
+                    max(0.5, remaining_seconds - 0.5),
+                )
+                legal_probe_request(
+                    url,
+                    run_id=run_id,
+                    task_id=task_id,
+                    target_index=target_index,
+                    remaining_wait_ms=remaining_wait_ms,
+                    timeout_seconds=timeout,
+                )
+                next_probe_at = time.monotonic() + LEGAL_PROBE_INTERVAL_SECONDS
+                continue
+            sleep_until = min(deadline, next_probe_at)
+            time.sleep(min(0.2, max(0.0, sleep_until - time.monotonic())))
+        raise_if_stop_requested(run_id)
+    finally:
+        append_worker_log(
+            "legal_probe_finished",
+            run_id=run_id,
+            task_id=task_id,
+            target_index=target_index,
+            elapsed_ms=int(max(0.0, total_seconds - max(0.0, deadline - time.monotonic())) * 1000),
+            probe_count=probe_index,
+        )
 
 
 def contact_id_for(phone: str) -> int:
@@ -2213,6 +2381,7 @@ def run_autodoor_once(
 def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dict[str, Any]) -> None:
     deps = import_autodoor(config)
     run_id = str(task_config.get("run_id") or task_config.get("task_id") or "")
+    task_id = task_config.get("task_id")
     raise_if_stop_requested(run_id)
     if parse_wechat_binding(task_config) and os.environ.get("FRIENDAUTO_FORCE_BG_INPUT") == "1":
         configure_bound_window_runtime()
@@ -2308,7 +2477,7 @@ def run_autodoor(config: AutoDoorConfig, prepared: PreparedRun, task_config: dic
                 f"第 {target_index + 1} 条已结束，等待下一次加好友",
                 run_id=run_id,
             )
-            interruptible_sleep(interval_ms / 1000, run_id)
+            wait_with_legal_probes(interval_ms / 1000, run_id, task_id, target_index)
 
     pending_count = max(0, len(prepared.targets) - total_finished)
     append_worker_log(

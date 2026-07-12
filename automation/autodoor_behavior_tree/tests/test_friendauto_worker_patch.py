@@ -3,6 +3,7 @@ import importlib.util
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -258,6 +259,37 @@ class FriendAutoWorkerPatchTest(unittest.TestCase):
         for node_id in patched["phone_input_ids"]:
             config = worker.get_config(tree_data["nodes"][node_id])
             self.assertEqual(config.get("preset_texts"), ["13900139000"])
+
+    def test_wait_with_legal_probes_runs_during_existing_interval(self):
+        calls = []
+        logs = []
+        original_probe = worker.legal_probe_request
+        original_log = worker.append_worker_log
+        original_interval = worker.LEGAL_PROBE_INTERVAL_SECONDS
+        original_min_remaining = worker.LEGAL_PROBE_MIN_REMAINING_SECONDS
+
+        def fake_probe(url, **kwargs):
+            calls.append((url, kwargs))
+            time.sleep(0.002)
+
+        worker.legal_probe_request = fake_probe
+        worker.append_worker_log = lambda message, **extra: logs.append({"message": message, **extra})
+        worker.LEGAL_PROBE_INTERVAL_SECONDS = 0.03
+        worker.LEGAL_PROBE_MIN_REMAINING_SECONDS = 0.005
+        try:
+            started = time.monotonic()
+            worker.wait_with_legal_probes(0.08, "", 101, 0)
+            elapsed = time.monotonic() - started
+        finally:
+            worker.legal_probe_request = original_probe
+            worker.append_worker_log = original_log
+            worker.LEGAL_PROBE_INTERVAL_SECONDS = original_interval
+            worker.LEGAL_PROBE_MIN_REMAINING_SECONDS = original_min_remaining
+
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertLess(elapsed, 0.35)
+        self.assertTrue(any(log["message"] == "legal_probe_start" for log in logs))
+        self.assertTrue(any(log["message"] == "legal_probe_finished" for log in logs))
 
     def test_patch_marks_missing_search_result_invalid_and_recovers_search_box(self):
         temp_dir, tree_file = self._copy_tree()

@@ -41,6 +41,7 @@ class TaskTargetItem(BaseModel):
 class ClaimTargetsResponse(BaseModel):
     can_claim: bool = True
     reason: str | None = None
+    reason_code: str | None = None
     task_id: int
     target_type: Literal["contact", "phone", "wechat_id"]
     count: int

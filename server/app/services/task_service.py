@@ -23,6 +23,13 @@ STALE_RUNNING_TASK_HOURS = 12
 VALID_TARGET_TYPES = {"contact", "phone", "wechat_id"}
 TRIAL_CHARGE_EVENTS = {"success"}
 MEMBER_MONTHLY_SUCCESS_PER_SLOT = 700
+TASK_GOAL_REACHED_REASON = "任务已完成"
+TASK_TARGETS_EXHAUSTED_REASON = "好友名单不足，本次任务未补满"
+TRIAL_EXHAUSTED_REASON = "免费次数已用完，任务已停止"
+TASK_GOAL_REACHED_CODE = "goal_reached"
+TASK_TARGETS_EXHAUSTED_CODE = "targets_exhausted"
+TRIAL_EXHAUSTED_CODE = "trial_exhausted"
+MEMBER_LIMIT_REACHED_CODE = "member_limit_reached"
 MEMBER_LIMIT_REACHED_REASON = "当前会员任务暂不可用，请稍后再试"
 
 
@@ -171,6 +178,15 @@ def member_success_count_for_membership(user_id: int, membership: Membership | N
     return int(query.scalar() or 0)
 
 
+def task_success_count(task_id: int, db: Session) -> int:
+    return int(
+        db.query(func.count(TaskResult.id))
+        .filter(TaskResult.task_id == task_id, TaskResult.result == "success")
+        .scalar()
+        or 0
+    )
+
+
 def member_reserved_target_count(user_id: int, db: Session, exclude_task_id: int | None = None) -> int:
     stale_before = datetime.utcnow() - timedelta(hours=STALE_RUNNING_TASK_HOURS)
     query = db.query(func.count(TaskTarget.id)).filter(
@@ -267,7 +283,7 @@ def start_check(
     if not has_remaining:
         return StartCheckResponse(
             can_start=False,
-            reason="试用次数已用完，请充值后再使用",
+            reason="\u8bd5\u7528\u6b21\u6570\u5df2\u7528\u5b8c\uff0c\u8bf7\u5145\u503c\u540e\u518d\u4f7f\u7528",
             membership=membership_info,
             trial=trial_info,
         )
@@ -276,7 +292,7 @@ def start_check(
     if slot_id > max_slots:
         return StartCheckResponse(
             can_start=False,
-            reason=f"当前套餐最多可使用 {max_slots} 个微信任务配置",
+            reason=f"\u5f53\u524d\u5957\u9910\u6700\u591a\u53ef\u4f7f\u7528 {max_slots} \u4e2a\u5fae\u4fe1\u4efb\u52a1\u914d\u7f6e",
             membership=membership_info,
             trial=trial_info,
         )
@@ -334,7 +350,25 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
         db.commit()
         return ClaimTargetsResponse(
             can_claim=False,
-            reason="免费次数已用完，任务已停止",
+            reason_code=TRIAL_EXHAUSTED_CODE,
+            reason=TRIAL_EXHAUSTED_REASON,
+            task_id=task.id,
+            target_type=task.target_type,
+            count=0,
+            targets=[],
+            membership=membership_info,
+            trial=trial_info,
+        )
+
+    success_count = task_success_count(task.id, db)
+    remaining_goal = max(0, int(task.daily_limit or 1) - success_count)
+    if remaining_goal <= 0:
+        finish_task_in_place(task, db)
+        db.commit()
+        return ClaimTargetsResponse(
+            can_claim=False,
+            reason_code=TASK_GOAL_REACHED_CODE,
+            reason=TASK_GOAL_REACHED_REASON,
             task_id=task.id,
             target_type=task.target_type,
             count=0,
@@ -350,16 +384,31 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
         .all()
     )
     if existing_targets:
+        limit = remaining_goal
         if not membership_info.is_active:
-            limit = trial_claim_limit(task.daily_limit, trial_info.remaining)
-            for target in existing_targets[limit:]:
-                target.status = "pending"
-                target.claimed_task_id = None
-                target.claimed_at = None
-                target.result_message = None
-            if len(existing_targets) > limit:
-                existing_targets = existing_targets[:limit]
-                db.commit()
+            limit = trial_claim_limit(remaining_goal, trial_info.remaining)
+        for target in existing_targets[limit:]:
+            target.status = "pending"
+            target.claimed_task_id = None
+            target.claimed_at = None
+            target.result_message = None
+        if len(existing_targets) > limit:
+            existing_targets = existing_targets[:limit]
+            db.commit()
+        if not existing_targets:
+            finish_task_in_place(task, db)
+            db.commit()
+            return ClaimTargetsResponse(
+                can_claim=False,
+                reason_code=TASK_TARGETS_EXHAUSTED_CODE,
+                reason=TASK_TARGETS_EXHAUSTED_REASON,
+                task_id=task.id,
+                target_type=task.target_type,
+                count=0,
+                targets=[],
+                membership=membership_info,
+                trial=trial_info,
+            )
         return ClaimTargetsResponse(
             task_id=task.id,
             target_type=task.target_type,
@@ -376,6 +425,7 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
             db.commit()
             return ClaimTargetsResponse(
                 can_claim=False,
+                reason_code=MEMBER_LIMIT_REACHED_CODE,
                 reason=MEMBER_LIMIT_REACHED_REASON,
                 task_id=task.id,
                 target_type=task.target_type,
@@ -388,10 +438,24 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
         member_remaining = None
 
     limit = (
-        member_claim_limit(task.daily_limit, member_remaining)
+        member_claim_limit(remaining_goal, member_remaining)
         if membership_info.is_active
-        else trial_claim_limit(task.daily_limit, trial_info.remaining)
+        else trial_claim_limit(remaining_goal, trial_info.remaining)
     )
+    if limit <= 0:
+        finish_task_in_place(task, db)
+        db.commit()
+        return ClaimTargetsResponse(
+            can_claim=False,
+            reason_code=MEMBER_LIMIT_REACHED_CODE if membership_info.is_active else TRIAL_EXHAUSTED_CODE,
+            reason=MEMBER_LIMIT_REACHED_REASON if membership_info.is_active else TRIAL_EXHAUSTED_REASON,
+            task_id=task.id,
+            target_type=task.target_type,
+            count=0,
+            targets=[],
+            membership=membership_info,
+            trial=trial_info,
+        )
     targets = (
         db.query(TaskTarget)
         .filter(
@@ -412,8 +476,22 @@ def claim_targets(task_id: int, user: User, db: Session) -> ClaimTargetsResponse
         target.finished_at = None
         target.result_message = None
 
-    if targets:
+    if not targets:
+        finish_task_in_place(task, db)
         db.commit()
+        return ClaimTargetsResponse(
+            can_claim=False,
+            reason_code=TASK_TARGETS_EXHAUSTED_CODE,
+            reason=TASK_TARGETS_EXHAUSTED_REASON,
+            task_id=task.id,
+            target_type=task.target_type,
+            count=0,
+            targets=[],
+            membership=membership_info,
+            trial=trial_info,
+        )
+
+    db.commit()
 
     return ClaimTargetsResponse(
         task_id=task.id,
@@ -568,3 +646,4 @@ def finish_task(task_id: int, user: User, db: Session) -> TaskResponse:
         started_at=task.started_at,
         finished_at=task.finished_at,
     )
+
